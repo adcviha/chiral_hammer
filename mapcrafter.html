@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chiral Hammer — Map Crafter</title>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d0d0d;
+  --surface: #1a1a1a;
+  --border: #2a2a2a;
+  --text: #c0c0c0;
+  --text-dim: #707070;
+  --amber: #ffb000;
+  --amber-dim: #996a00;
+  --cyan: #00bfff;
+  --cyan-dim: #007799;
+  --red: #cc3333;
+  --font: 'Courier New', Courier, monospace;
+  --font-size: 12px;
+  --bar-height: 28px;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--font-size);
+  user-select: none;
+}
+
+/* ===== CANVAS ===== */
+#canvas-container {
+  position: fixed; inset: 0;
+  z-index: 1;
+}
+#canvas-container canvas { display: block; }
+
+/* ===== HELP OVERLAY ===== */
+#help-overlay {
+  position: fixed; top: 8px; left: 8px;
+  z-index: 10;
+  background: rgba(13,13,13,0.85);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  pointer-events: none;
+  line-height: 1.6;
+}
+#help-overlay .mode-label {
+  color: var(--amber);
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+#help-overlay .key { color: var(--cyan); }
+#help-overlay .dim { color: var(--text-dim); }
+
+/* ===== TREASURE BOX ===== */
+#treasure-box {
+  position: fixed; top: 0; right: 0;
+  z-index: 20;
+  width: 280px; height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+  display: flex; flex-direction: column;
+}
+#treasure-box.open { transform: translateX(0); }
+
+#treasure-box .tb-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--amber);
+  font-weight: bold;
+}
+#treasure-box .tb-body {
+  flex: 1; overflow-y: auto;
+  padding: 12px;
+  color: var(--text-dim);
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+}
+
+/* ===== STATUS BAR ===== */
+#status-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  z-index: 10;
+  height: var(--bar-height);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 12px;
+  gap: 16px;
+}
+#status-bar .sb-item { display: flex; align-items: center; gap: 6px; }
+#status-bar .sb-label { color: var(--text-dim); text-transform: uppercase; }
+#status-bar .sb-value { color: var(--text); }
+#status-bar .sb-amber { color: var(--amber); }
+#status-bar .sb-cyan { color: var(--cyan); }
+#status-bar .sb-saved { color: #44aa44; }
+#status-bar .sb-spacer { flex: 1; }
+
+/* ===== COLOR PALETTE (2D mode) ===== */
+#palette {
+  position: fixed; top: 8px; right: 8px;
+  z-index: 10;
+  display: flex; gap: 4px;
+  background: rgba(13,13,13,0.85);
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+}
+#palette .swatch {
+  width: 18px; height: 18px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+#palette .swatch.active {
+  border-color: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan);
+}
+
+/* ===== BUTTONS ROW ===== */
+#btn-row {
+  position: fixed; top: 8px; right: 160px;
+  z-index: 10;
+  display: flex; gap: 6px;
+}
+.tool-btn {
+  font-family: var(--font); font-size: var(--font-size);
+  background: rgba(13,13,13,0.85);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.tool-btn:hover { border-color: var(--amber); color: var(--amber); }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<!-- HELP OVERLAY -->
+<div id="help-overlay">
+  <div class="mode-label" id="help-mode">2D PAINT</div>
+  <div id="help-keys"></div>
+</div>
+
+<!-- COLOR PALETTE -->
+<div id="palette"></div>
+
+<!-- TOP BUTTONS -->
+<div id="btn-row">
+  <button class="tool-btn" id="btn-export" title="Export JSON">EXPORT</button>
+  <button class="tool-btn" id="btn-import-file" title="Import JSON">IMPORT</button>
+  <button class="tool-btn" id="btn-clear" title="Clear all cells">CLEAR</button>
+</div>
+<input type="file" id="import-input" accept=".json" style="display:none">
+
+<!-- TREASURE BOX -->
+<div id="treasure-box">
+  <div class="tb-header">
+    <span>TREASURE BOX</span>
+    <span class="dim" style="font-size:10px">[T]</span>
+  </div>
+  <div class="tb-body">
+    No prefabs yet.<br>Select geometry and save to get started.
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="status-bar">
+  <div class="sb-item">
+    <span class="sb-label">MODE</span>
+    <span class="sb-value sb-amber" id="sb-mode">2D PAINT</span>
+  </div>
+  <div class="sb-item">
+    <span class="sb-label">CELLS</span>
+    <span class="sb-value sb-cyan" id="sb-cells">0</span>
+  </div>
+  <div class="sb-item">
+    <span class="sb-label">CURSOR</span>
+    <span class="sb-value" id="sb-cursor">—</span>
+  </div>
+  <span class="sb-spacer"></span>
+  <div class="sb-item">
+    <span class="sb-label">SAVE</span>
+    <span class="sb-value sb-saved" id="sb-save">SAVED</span>
+  </div>
+</div>
+
+<!-- THREE.JS IMPORT MAP -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ===== STATE =====
+
+const state = {
+  mode: '2d',              // '2d' | '3d'
+  grid: new Map(),          // "x,z" -> { color: '#rrggbb' }
+  palette: [
+    '#8b7355', '#6b8b6b', '#7b7b7b', '#8b6b4a',
+    '#5a7a5a', '#9b8b7b', '#687868', '#a08060',
+    '#4a6a5a', '#7b6b5b', '#8b8b7b', '#6b5b4b'
+  ],
+  activeColor: '#8b7355',
+  tbOpen: false,
+  camera2D: null,
+  camera3D: null,
+
+  // 3D camera state
+  camPos: new THREE.Vector3(10, 10, 10),
+  camYaw: -Math.PI / 4,
+  camPitch: -0.5,
+
+  // Mouse / input state
+  mouse: new THREE.Vector2(),
+  mouseWorld2D: new THREE.Vector3(),
+  mouseDown: false,
+  mouseButton: -1,   // 0=paint, 2=erase
+  middleDown: false,
+  rightDown: false,
+  keys: {},
+
+  // save flag
+  dirty: false,
+  saveTimeout: null,
+};
+
+// ===== DOM REFS =====
+
+const container = document.getElementById('canvas-container');
+const helpMode = document.getElementById('help-mode');
+const helpKeys = document.getElementById('help-keys');
+const paletteEl = document.getElementById('palette');
+const treasureBox = document.getElementById('treasure-box');
+const sbMode = document.getElementById('sb-mode');
+const sbCells = document.getElementById('sb-cells');
+const sbCursor = document.getElementById('sb-cursor');
+const sbSave = document.getElementById('sb-save');
+const importInput = document.getElementById('import-input');
+
+// ===== THREE.JS SETUP =====
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x0d0d0d);
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+
+// 2D orthographic camera
+const frustumSize = 20;
+const aspect = window.innerWidth / window.innerHeight;
+state.camera2D = new THREE.OrthographicCamera(
+  frustumSize * aspect / -2,
+  frustumSize * aspect / 2,
+  frustumSize / 2,
+  frustumSize / -2,
+  -50, 50
+);
+state.camera2D.position.set(0, 20, 0);
+state.camera2D.lookAt(0, 0, 0);
+
+// 3D perspective camera
+state.camera3D = new THREE.PerspectiveCamera(60, aspect, 0.1, 200);
+state.camera3D.position.copy(state.camPos);
+state.camera3D.lookAt(0, 0, 0);
+
+let activeCamera = state.camera2D;
+
+// Lights for 3D
+const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+dirLight.position.set(10, 20, 5);
+scene.add(dirLight);
+
+// Ground / grid plane
+const gridSize = 50;
+const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x333333, 0x1a1a1a);
+gridHelper.position.y = 0.001;
+scene.add(gridHelper);
+
+// Dark ground plane
+const groundGeo = new THREE.PlaneGeometry(gridSize, gridSize);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1, side: THREE.DoubleSide });
+const groundPlane = new THREE.Mesh(groundGeo, groundMat);
+groundPlane.rotation.x = -Math.PI / 2;
+groundPlane.position.y = -0.01;
+groundPlane.name = 'ground';
+scene.add(groundPlane);
+
+// Group for cell meshes
+const cellGroup = new THREE.Group();
+cellGroup.name = 'cells';
+scene.add(cellGroup);
+
+// Highlight quad under cursor in 2D mode
+const highlightGeo = new THREE.PlaneGeometry(1, 1);
+const highlightMat = new THREE.MeshBasicMaterial({ color: 0x00bfff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthTest: false });
+const highlightQuad = new THREE.Mesh(highlightGeo, highlightMat);
+highlightQuad.rotation.x = -Math.PI / 2;
+highlightQuad.position.y = 0.01;
+highlightQuad.visible = true;
+highlightQuad.renderOrder = 999;
+highlightQuad.material.depthTest = false;
+scene.add(highlightQuad);
+
+// ===== SCRATCH OBJECTS (reused to avoid GC) =====
+
+const _raycaster = new THREE.Raycaster();
+const _m4 = new THREE.Matrix4();
+const _ndc = new THREE.Vector3();
+const _hit = new THREE.Vector3();
+const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _intersection = new THREE.Vector3();
+const _v3 = new THREE.Vector3();
+
+// ===== CELL MESH CACHE =====
+// Map "x,z" -> THREE.Mesh
+
+const cellMeshes = new Map();
+
+// ===== GRID DATA MODEL =====
+
+function gridKey(gx, gz) {
+  return `${gx},${gz}`;
+}
+
+function cellExists(gx, gz) {
+  return state.grid.has(gridKey(gx, gz));
+}
+
+function getCell(gx, gz) {
+  return state.grid.get(gridKey(gx, gz));
+}
+
+function setCell(gx, gz, color) {
+  const key = gridKey(gx, gz);
+  state.grid.set(key, { color });
+  addCellMesh(gx, gz, color);
+  markDirty();
+}
+
+function removeCell(gx, gz) {
+  const key = gridKey(gx, gz);
+  state.grid.delete(key);
+  removeCellMesh(gx, gz);
+  markDirty();
+}
+
+function clearAllCells() {
+  for (const key of state.grid.keys()) {
+    const [gx, gz] = key.split(',').map(Number);
+    removeCellMesh(gx, gz);
+  }
+  state.grid.clear();
+  markDirty();
+  saveState();
+  updateStatusBar();
+}
+
+// ===== CELL MESHES =====
+
+function makeCellGeometry() {
+  // Slightly smaller than 1x1 for visible grid lines between cells
+  return new THREE.BoxGeometry(0.94, 0.15, 0.94);
+}
+
+function makeCellEdges() {
+  return new THREE.EdgesGeometry(new THREE.BoxGeometry(0.94, 0.15, 0.94));
+}
+
+function addCellMesh(gx, gz, color) {
+  const key = gridKey(gx, gz);
+  if (cellMeshes.has(key)) {
+    removeCellMesh(gx, gz);
+  }
+
+  const geo = makeCellGeometry();
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(gx, 0.075, gz);
+  mesh.name = `cell-${key}`;
+
+  // edge highlight
+  const edgeGeo = makeCellEdges();
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
+  const edgeLine = new THREE.LineSegments(edgeGeo, edgeMat);
+  mesh.add(edgeLine);
+
+  cellGroup.add(mesh);
+  cellMeshes.set(key, mesh);
+}
+
+function removeCellMesh(gx, gz) {
+  const key = gridKey(gx, gz);
+  const mesh = cellMeshes.get(key);
+  if (mesh) {
+    cellGroup.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+    // dispose edge child
+    if (mesh.children[0]) {
+      mesh.children[0].geometry.dispose();
+      mesh.children[0].material.dispose();
+    }
+    cellMeshes.delete(key);
+  }
+}
+
+function updateCellColor(gx, gz, color) {
+  const key = gridKey(gx, gz);
+  const mesh = cellMeshes.get(key);
+  if (mesh) {
+    mesh.material.color.set(color);
+  }
+}
+
+// ===== 2D INPUT =====
+
+function getGridFromMouse(event) {
+  // Convert mouse to NDC
+  _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
+  _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  _raycaster.setFromCamera(_ndc, activeCamera);
+
+  // Intersect with ground plane (y=0)
+  const target = new THREE.Vector3();
+  const rayOrigin = _raycaster.ray.origin;
+  const rayDir = _raycaster.ray.direction;
+
+  // Ray-plane intersection with y=0 plane
+  const denom = rayDir.y;
+  if (Math.abs(denom) < 0.0001) return null;
+  const t = -rayOrigin.y / denom;
+  if (t < 0) return null;
+
+  target.copy(rayOrigin).addScaledVector(rayDir, t);
+
+  // Round to grid
+  const gx = Math.round(target.x);
+  const gz = Math.round(target.z);
+  return { gx, gz, worldX: target.x, worldZ: target.z };
+}
+
+function paintAtMouse(event) {
+  const grid = getGridFromMouse(event);
+  if (!grid) return;
+  if (state.mode !== '2d') return;
+
+  if (event.buttons & 1) { // left button = paint
+    if (!cellExists(grid.gx, grid.gz)) {
+      setCell(grid.gx, grid.gz, state.activeColor);
+      updateStatusBar();
+    }
+  } else if (event.buttons & 2) { // right button = erase
+    if (cellExists(grid.gx, grid.gz)) {
+      removeCell(grid.gx, grid.gz);
+      updateStatusBar();
+    }
+  }
+}
+
+function updateHighlight(event) {
+  if (state.mode !== '2d') {
+    highlightQuad.visible = false;
+    return;
+  }
+  const grid = getGridFromMouse(event);
+  if (!grid) {
+    highlightQuad.visible = false;
+    return;
+  }
+  highlightQuad.position.set(grid.gx, 0.01, grid.gz);
+  highlightQuad.visible = true;
+
+  // Update status bar cursor coords
+  sbCursor.textContent = `${grid.gx}, ${grid.gz}`;
+  state.mouseWorld2D.set(grid.worldX, 0, grid.worldZ);
+}
+
+// ===== 3D INPUT =====
+
+function update3DCamera(deltaSec) {
+  if (state.mode !== '3d') return;
+
+  const speed = state.keys['ShiftLeft'] || state.keys['ShiftRight'] ? 15 : 5;
+  const moveSpeed = speed * deltaSec;
+  const lookSpeed = 2 * deltaSec;
+
+  // Mouse look
+  if (state.rightDown && state.mouse.x !== 0 && state.mouse.y !== 0) {
+    state.camYaw -= state.mouse.x * lookSpeed;
+    state.camPitch -= state.mouse.y * lookSpeed;
+    state.camPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.camPitch));
+  }
+
+  // WASD movement
+  const forward = new THREE.Vector3(
+    Math.sin(state.camYaw) * Math.cos(state.camPitch),
+    Math.sin(state.camPitch),
+    Math.cos(state.camYaw) * Math.cos(state.camPitch)
+  ).normalize();
+
+  const right = new THREE.Vector3(
+    Math.sin(state.camYaw + Math.PI / 2),
+    0,
+    Math.cos(state.camYaw + Math.PI / 2)
+  ).normalize();
+
+  if (state.keys['KeyW']) state.camPos.addScaledVector(forward, moveSpeed);
+  if (state.keys['KeyS']) state.camPos.addScaledVector(forward, -moveSpeed);
+  if (state.keys['KeyA']) state.camPos.addScaledVector(right, -moveSpeed);
+  if (state.keys['KeyD']) state.camPos.addScaledVector(right, moveSpeed);
+  if (state.keys['KeyQ']) state.camPos.y -= moveSpeed;
+  if (state.keys['KeyE']) state.camPos.y += moveSpeed;
+
+  // Clamp height
+  state.camPos.y = Math.max(0.5, state.camPos.y);
+
+  // Look target
+  const lookTarget = new THREE.Vector3(
+    state.camPos.x + Math.sin(state.camYaw) * Math.cos(state.camPitch),
+    state.camPos.y + Math.sin(state.camPitch),
+    state.camPos.z + Math.cos(state.camYaw) * Math.cos(state.camPitch)
+  );
+
+  state.camera3D.position.copy(state.camPos);
+  state.camera3D.lookAt(lookTarget);
+
+  // Update status bar
+  sbCursor.textContent =
+    `${state.camPos.x.toFixed(1)}, ${state.camPos.y.toFixed(1)}, ${state.camPos.z.toFixed(1)}`;
+}
+
+// ===== MODE SWITCHING =====
+
+function setMode(mode) {
+  state.mode = mode;
+  activeCamera = mode === '2d' ? state.camera2D : state.camera3D;
+
+  // In 2D mode, reset camera position
+  if (mode === '2d') {
+    highlightQuad.visible = true;
+    sbCursor.textContent = '—';
+  } else {
+    highlightQuad.visible = false;
+    // Sync 3D camera pos from state
+    state.camera3D.position.copy(state.camPos);
+  }
+
+  updateHelp();
+  updateStatusBar();
+
+  // Update renderer size for new camera
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (mode === '2d') {
+    update2DCameraAspect();
+  } else {
+    state.camera3D.aspect = window.innerWidth / window.innerHeight;
+    state.camera3D.updateProjectionMatrix();
+  }
+}
+
+function update2DCameraAspect() {
+  const a = window.innerWidth / window.innerHeight;
+  const fs = frustumSize;
+  state.camera2D.left = fs * a / -2;
+  state.camera2D.right = fs * a / 2;
+  state.camera2D.top = fs / 2;
+  state.camera2D.bottom = fs / -2;
+  state.camera2D.updateProjectionMatrix();
+}
+
+// ===== 2D PAN & ZOOM =====
+
+function pan2D(dx, dy) {
+  if (state.mode !== '2d') return;
+  const zoom = state.camera2D.zoom;
+  state.camera2D.position.x -= dx / zoom;
+  state.camera2D.position.z -= dy / zoom;
+}
+
+function zoom2D(delta, cursorX, cursorY) {
+  if (state.mode !== '2d') return;
+
+  const oldZoom = state.camera2D.zoom;
+  const newZoom = Math.max(0.25, Math.min(8, oldZoom * (1 - delta * 0.001)));
+  state.camera2D.zoom = newZoom;
+
+  // Zoom toward cursor
+  const ndcX = (cursorX / window.innerWidth) * 2 - 1;
+  const ndcY = -(cursorY / window.innerHeight) * 2 + 1;
+  const worldBefore = _v3.set(ndcX / oldZoom, 0, ndcY / oldZoom)
+    .add(state.camera2D.position);
+  const worldAfter = _v3.set(ndcX / newZoom, 0, ndcY / newZoom)
+    .add(state.camera2D.position);
+  state.camera2D.position.add(worldBefore.sub(worldAfter));
+
+  state.camera2D.updateProjectionMatrix();
+}
+
+// ===== EVENT HANDLERS =====
+
+function onMouseDown(event) {
+  if (event.target !== renderer.domElement) return;
+
+  if (state.mode === '2d') {
+    if (event.button === 0) {
+      state.mouseDown = true;
+      state.mouseButton = 0;
+      paintAtMouse(event);
+    } else if (event.button === 2) {
+      state.mouseDown = true;
+      state.mouseButton = 2;
+      paintAtMouse(event);
+    } else if (event.button === 1) {
+      state.middleDown = true;
+      event.preventDefault();
+    }
+  }
+
+  if (state.mode === '3d') {
+    if (event.button === 2) {
+      state.rightDown = true;
+      state.mouse.set(0, 0);
+    }
+  }
+}
+
+function onMouseMove(event) {
+  state.mouse.set(
+    event.movementX || 0,
+    event.movementY || 0
+  );
+
+  if (state.mode === '2d') {
+    updateHighlight(event);
+
+    if (state.middleDown) {
+      pan2D(event.movementX, event.movementY);
+      return;
+    }
+
+    if (state.mouseDown && (event.buttons & 1 || event.buttons & 2)) {
+      paintAtMouse(event);
+    }
+  }
+}
+
+function onMouseUp(event) {
+  state.mouseDown = false;
+  state.mouseButton = -1;
+  state.middleDown = false;
+  state.rightDown = false;
+
+  // Trigger save after paint session
+  if (state.dirty) {
+    scheduleSave();
+  }
+}
+
+function onWheel(event) {
+  if (state.mode === '2d') {
+    zoom2D(event.deltaY, event.clientX, event.clientY);
+  }
+  // In 3D mode, scroll does nothing (or could adjust speed)
+}
+
+function onContextMenu(event) {
+  event.preventDefault();
+}
+
+function onKeyDown(event) {
+  state.keys[event.code] = true;
+
+  // Tab: toggle mode
+  if (event.code === 'Tab') {
+    event.preventDefault();
+    setMode(state.mode === '2d' ? '3d' : '2d');
+    return;
+  }
+
+  // T: toggle treasure box
+  if (event.code === 'KeyT') {
+    toggleTreasureBox();
+    return;
+  }
+
+  // Escape: close treasure box if open
+  if (event.code === 'Escape') {
+    if (state.tbOpen) {
+      toggleTreasureBox();
+      return;
+    }
+  }
+}
+
+function onKeyUp(event) {
+  state.keys[event.code] = false;
+}
+
+function onResize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  if (state.mode === '2d') {
+    update2DCameraAspect();
+  } else {
+    state.camera3D.aspect = window.innerWidth / window.innerHeight;
+    state.camera3D.updateProjectionMatrix();
+  }
+}
+
+// ===== POINTER LOCK for 3D =====
+
+// We don't use pointer lock. Instead, right-mouse-hold + move for look.
+// MovementX/Y from mousemove works without pointer lock when any button is held.
+
+// ===== PALETTE =====
+
+function buildPalette() {
+  paletteEl.innerHTML = '';
+  state.palette.forEach(color => {
+    const swatch = document.createElement('div');
+    swatch.className = 'swatch' + (color === state.activeColor ? ' active' : '');
+    swatch.style.background = color;
+    swatch.title = color;
+    swatch.addEventListener('click', () => {
+      state.activeColor = color;
+      buildPalette();
+    });
+    paletteEl.appendChild(swatch);
+  });
+}
+
+// ===== TREASURE BOX =====
+
+function toggleTreasureBox() {
+  state.tbOpen = !state.tbOpen;
+  if (state.tbOpen) {
+    treasureBox.classList.add('open');
+  } else {
+    treasureBox.classList.remove('open');
+  }
+}
+
+// ===== STATUS BAR =====
+
+function updateStatusBar() {
+  sbMode.textContent = state.mode === '2d' ? '2D PAINT' : '3D FLY';
+  sbCells.textContent = state.grid.size;
+}
+
+// ===== HELP OVERLAY =====
+
+function updateHelp() {
+  if (state.mode === '2d') {
+    helpMode.textContent = '2D PAINT';
+    helpKeys.innerHTML = `
+      <span class="key">LMB</span> <span class="dim">paint cell</span><br>
+      <span class="key">RMB</span> <span class="dim">erase cell</span><br>
+      <span class="key">MMB drag</span> <span class="dim">pan</span><br>
+      <span class="key">Scroll</span> <span class="dim">zoom</span><br>
+      <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
+      <span class="key">T</span> <span class="dim">treasure box</span>
+    `;
+  } else {
+    helpMode.textContent = '3D FLY';
+    helpKeys.innerHTML = `
+      <span class="key">WASD</span> <span class="dim">move</span><br>
+      <span class="key">Q/E</span> <span class="dim">down / up</span><br>
+      <span class="key">Shift</span> <span class="dim">speed boost</span><br>
+      <span class="key">RMB drag</span> <span class="dim">look</span><br>
+      <span class="key">Tab</span> <span class="dim">switch to 2D</span><br>
+      <span class="key">T</span> <span class="dim">treasure box</span>
+    `;
+  }
+}
+
+// ===== PERSISTENCE =====
+
+const STORAGE_KEY = 'mapcrafter:v0';
+
+function markDirty() {
+  state.dirty = true;
+  sbSave.textContent = 'UNSAVED';
+  sbSave.className = 'sb-value';
+  sbSave.style.color = '#cc8833';
+}
+
+function scheduleSave() {
+  if (state.saveTimeout) clearTimeout(state.saveTimeout);
+  state.saveTimeout = setTimeout(saveState, 500);
+}
+
+function saveState() {
+  const data = {
+    version: 0,
+    cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    state.dirty = false;
+    sbSave.textContent = 'SAVED';
+    sbSave.style.color = '#44aa44';
+  } catch (e) {
+    sbSave.textContent = 'SAVE ERR';
+    sbSave.style.color = '#cc3333';
+    console.warn('Failed to save:', e);
+  }
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.cells && Array.isArray(data.cells)) {
+      for (const cell of data.cells) {
+        const [gx, gz] = cell.key.split(',').map(Number);
+        setCell(gx, gz, cell.color);
+      }
+      state.dirty = false;
+      sbSave.textContent = 'LOADED';
+      sbSave.style.color = '#44aa44';
+    }
+  } catch (e) {
+    console.warn('Failed to load:', e);
+  }
+}
+
+function exportJSON() {
+  const data = {
+    version: 0,
+    cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'mapcrafter-map.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importJSON(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data.cells || !Array.isArray(data.cells)) {
+        alert('Invalid map file: missing cells array.');
+        return;
+      }
+      // Clear current
+      clearAllCells();
+      // Load new
+      for (const cell of data.cells) {
+        const [gx, gz] = cell.key.split(',').map(Number);
+        setCell(gx, gz, cell.color);
+      }
+      state.dirty = false;
+      saveState();
+      updateStatusBar();
+    } catch (e) {
+      alert('Failed to parse map file: ' + e.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ===== MAIN LOOP =====
+
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const delta = clock.getDelta();
+  // Clamp delta to avoid huge jumps (e.g. tab switch)
+  const dt = Math.min(delta, 0.1);
+
+  update3DCamera(dt);
+
+  renderer.render(scene, activeCamera);
+
+  // Update cursor coords in 3D mode (every frame due to constant movement)
+  if (state.mode === '3d') {
+    sbCursor.textContent =
+      `${state.camPos.x.toFixed(1)}, ${state.camPos.y.toFixed(1)}, ${state.camPos.z.toFixed(1)}`;
+  }
+}
+
+// ===== INIT =====
+
+function init() {
+  // Event listeners
+  renderer.domElement.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+  window.addEventListener('wheel', onWheel, { passive: false });
+  window.addEventListener('contextmenu', onContextMenu);
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('resize', onResize);
+
+  // Buttons
+  document.getElementById('btn-export').addEventListener('click', exportJSON);
+  document.getElementById('btn-import-file').addEventListener('click', () => importInput.click());
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    if (state.grid.size === 0 || confirm('Clear all cells?')) {
+      clearAllCells();
+      updateStatusBar();
+    }
+  });
+  importInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) {
+      importJSON(e.target.files[0]);
+      e.target.value = '';
+    }
+  });
+
+  buildPalette();
+  updateHelp();
+  updateStatusBar();
+  loadState();
+  updateStatusBar();
+
+  renderer.domElement.focus();
+
+  // Start loop
+  animate();
+}
+
+// ===== EXPOSE FOR CONSOLE HACKING =====
+
+window.MAPCRAFTER = {
+  state,
+  scene,
+  renderer,
+  cellMeshes,
+  cellGroup,
+  setCell,
+  removeCell,
+  clearAllCells,
+  saveState,
+  loadState,
+  exportJSON,
+  importJSON,
+  setMode,
+  get camera() { return activeCamera; },
+};
+
+init();
+</script>
+</body>
+</html>
