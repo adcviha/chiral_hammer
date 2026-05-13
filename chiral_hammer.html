@@ -299,7 +299,6 @@ const state = {
   mouseButton: -1,
   middleDown: false,
   rightDown: false,
-  dragFill: true,
   keys: {},
 
   // selection
@@ -694,10 +693,10 @@ function update3DCamera(deltaSec) {
     Math.cos(state.camYaw + Math.PI / 2)
   ).normalize();
 
-  if (state.keys['KeyW']) state.camPos.addScaledVector(forward, moveSpeed);
-  if (state.keys['KeyS']) state.camPos.addScaledVector(forward, -moveSpeed);
-  if (state.keys['KeyA']) state.camPos.addScaledVector(right, moveSpeed);
-  if (state.keys['KeyD']) state.camPos.addScaledVector(right, -moveSpeed);
+  if (state.keys['KeyW'] || state.keys['ArrowUp']) state.camPos.addScaledVector(forward, moveSpeed);
+  if (state.keys['KeyS'] || state.keys['ArrowDown']) state.camPos.addScaledVector(forward, -moveSpeed);
+  if (state.keys['KeyA'] || state.keys['ArrowLeft']) state.camPos.addScaledVector(right, moveSpeed);
+  if (state.keys['KeyD'] || state.keys['ArrowRight']) state.camPos.addScaledVector(right, -moveSpeed);
   if (state.keys['KeyQ']) state.camPos.y -= moveSpeed;
   if (state.keys['KeyE']) state.camPos.y += moveSpeed;
 
@@ -811,36 +810,37 @@ function onMouseDown(event) {
 
   if (state.mode === '2d') {
     if (event.button === 0) {
-      // LMB = paint (drag to fill)
       state.mouseDown = true;
       state.mouseButton = 0;
-      if (state.keys['Space']) {
+      if (state.keys['ShiftLeft'] || state.keys['ShiftRight']) {
+        // Shift+LMB = select
+        const grid = getGridFromMouse(event);
+        if (grid) {
+          clearSelection();
+          state.selecting = true;
+          state.selectStart.set(grid.gx, grid.gz);
+          state.selectEnd.set(grid.gx, grid.gz);
+          updateSelRect();
+          selRect.visible = true; selOutline.visible = true;
+        }
+      } else if (state.keys['Space']) {
         // Space+LMB = pan, handled in mousemove
       } else {
-        const grid = getGridFromMouse(event);
-        if (!grid && state.selectedCells.size > 0) {
-          clearSelection();
-        }
+        // LMB = paint
         paintAtMouse(event);
       }
     } else if (event.button === 2) {
-      // RMB = selection rubber-band
+      // RMB = erase
       state.mouseDown = true;
       state.mouseButton = 2;
       const grid = getGridFromMouse(event);
-      if (grid) {
-        state.selecting = true;
-        state.selectStart.set(grid.gx, grid.gz);
-        state.selectEnd.set(grid.gx, grid.gz);
-        selRect.visible = true; selOutline.visible = true;
-      } else {
-        clearSelection();
+      if (grid && cellExists(grid.gx, grid.gz)) {
+        removeCell(grid.gx, grid.gz);
+        updateStatusBar();
       }
     } else if (event.button === 1) {
-      // MMB = pan or toggle drag-fill
+      // MMB = pan
       state.middleDown = true;
-      state._mmStartX = event.clientX;
-      state._mmStartY = event.clientY;
       event.preventDefault();
     }
   }
@@ -886,8 +886,15 @@ function onMouseMove(event) {
       return;
     }
 
-    if (state.dragFill && state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
+    if (state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
       paintAtMouse(event);
+    }
+    if (state.mouseDown && state.mouseButton === 2 && (event.buttons & 2)) {
+      const grid = getGridFromMouse(event);
+      if (grid && cellExists(grid.gx, grid.gz)) {
+        removeCell(grid.gx, grid.gz);
+        updateStatusBar();
+      }
     }
   }
 
@@ -916,16 +923,6 @@ function onMouseUp(event) {
     state.selecting = false;
   }
 
-  // MMB click (not drag) toggles drag-fill mode
-  if (event.button === 1 && state.middleDown) {
-    const dx = event.clientX - state._mmStartX;
-    const dy = event.clientY - state._mmStartY;
-    if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
-      state.dragFill = !state.dragFill;
-      updateStatusBar();
-    }
-  }
-
   state.mouseDown = false;
   state.mouseButton = -1;
   state.middleDown = false;
@@ -940,13 +937,23 @@ function onWheel(event) {
   if (state.mode === '2d') {
     zoom2D(event.deltaY, event.clientX, event.clientY);
   } else if (state.mode === '3d') {
-    const fwd = new THREE.Vector3(
-      Math.sin(state.camYaw) * Math.cos(state.camPitch),
-      Math.sin(state.camPitch),
-      Math.cos(state.camYaw) * Math.cos(state.camPitch)
-    ).normalize();
+    _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
+    _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    _raycaster.setFromCamera(_ndc, state.camera3D);
+    const hit = new THREE.Vector3();
+    const didHit = _raycaster.ray.intersectPlane(_plane, hit);
     const dolly = event.deltaY * 0.05;
-    state.camPos.addScaledVector(fwd, dolly);
+    if (didHit) {
+      const dir = new THREE.Vector3().subVectors(hit, state.camPos).normalize();
+      state.camPos.addScaledVector(dir, dolly);
+    } else {
+      const fwd = new THREE.Vector3(
+        Math.sin(state.camYaw) * Math.cos(state.camPitch),
+        Math.sin(state.camPitch),
+        Math.cos(state.camYaw) * Math.cos(state.camPitch)
+      ).normalize();
+      state.camPos.addScaledVector(fwd, dolly);
+    }
     state.camPos.y = Math.max(0.5, state.camPos.y);
   }
 }
@@ -1034,11 +1041,7 @@ function toggleTreasureBox() {
 // ===== STATUS BAR =====
 
 function updateStatusBar() {
-  if (state.mode === '2d') {
-    sbMode.textContent = state.dragFill ? '2D FILL' : '2D CLICK';
-  } else {
-    sbMode.textContent = '3D FLY';
-  }
+  sbMode.textContent = state.mode === '2d' ? '2D PAINT' : '3D FLY';
   sbCells.textContent = state.grid.size;
 }
 
@@ -1048,10 +1051,11 @@ function updateHelp() {
   if (state.mode === '2d') {
     helpMode.textContent = '2D PAINT';
     helpKeys.innerHTML = `
-      <span class="key">LMB drag</span> <span class="dim">paint cells</span><br>
-      <span class="key">RMB drag</span> <span class="dim">select cells</span><br>
-      <span class="key">MMB click</span> <span class="dim">toggle fill</span><br>
+      <span class="key">LMB</span> <span class="dim">paint cell</span><br>
+      <span class="key">RMB</span> <span class="dim">erase cell</span><br>
+      <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
       <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
+      <span class="key">MMB drag</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
       <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
@@ -1059,10 +1063,11 @@ function updateHelp() {
   } else {
     helpMode.textContent = '3D FLY';
     helpKeys.innerHTML = `
-      <span class="key">WASD</span> <span class="dim">move</span><br>
+      <span class="key">WASD / arrows</span> <span class="dim">move</span><br>
       <span class="key">Q/E</span> <span class="dim">down / up</span><br>
       <span class="key">Shift</span> <span class="dim">speed boost</span><br>
       <span class="key">RMB hold</span> <span class="dim">mouse look</span><br>
+      <span class="key">Scroll</span> <span class="dim">zoom to cursor</span><br>
       <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 2D</span><br>
       <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
@@ -1072,7 +1077,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.9';
+const STORAGE_KEY = 'chiral_hammer:v0.91';
 
 function markDirty() {
   state.dirty = true;
@@ -1087,7 +1092,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.9,
+    version: 0.91,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -1123,7 +1128,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.9,
+    version: 0.91,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
