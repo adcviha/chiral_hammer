@@ -366,13 +366,9 @@ function clearAllCells() {
 
 // ===== CELL MESHES =====
 
-function makeCellGeometry() {
-  return new THREE.BoxGeometry(0.94, 0.15, 0.94);
-}
-
-function makeCellEdges() {
-  return new THREE.EdgesGeometry(new THREE.BoxGeometry(0.94, 0.15, 0.94));
-}
+// Shared geometry — all cells are identical 1x1 flat planes
+const _cellGeo = new THREE.PlaneGeometry(1, 1);
+_cellGeo.rotateX(-Math.PI / 2);
 
 function addCellMesh(gx, gz, color) {
   const key = gridKey(gx, gz);
@@ -380,17 +376,10 @@ function addCellMesh(gx, gz, color) {
     removeCellMesh(gx, gz);
   }
 
-  const geo = makeCellGeometry();
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(gx, 0.075, gz);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(_cellGeo, mat);
+  mesh.position.set(gx, 0.002, gz);
   mesh.name = `cell-${key}`;
-
-  // edge highlight
-  const edgeGeo = makeCellEdges();
-  const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
-  const edgeLine = new THREE.LineSegments(edgeGeo, edgeMat);
-  mesh.add(edgeLine);
 
   cellGroup.add(mesh);
   cellMeshes.set(key, mesh);
@@ -401,12 +390,7 @@ function removeCellMesh(gx, gz) {
   const mesh = cellMeshes.get(key);
   if (mesh) {
     cellGroup.remove(mesh);
-    mesh.geometry.dispose();
     mesh.material.dispose();
-    if (mesh.children[0]) {
-      mesh.children[0].geometry.dispose();
-      mesh.children[0].material.dispose();
-    }
     cellMeshes.delete(key);
   }
 }
@@ -758,7 +742,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.2';
+const STORAGE_KEY = 'chiral_hammer:v0.3';
 
 function markDirty() {
   state.dirty = true;
@@ -773,7 +757,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.2,
+    version: 0.3,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -809,7 +793,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.2,
+    version: 0.3,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
