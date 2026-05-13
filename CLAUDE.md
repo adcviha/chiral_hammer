@@ -59,20 +59,19 @@ Live at: `https://adcviha.github.io/chiral_hammer/`
 - Space+LMB pan in 2D (trackpad-friendly alternative to MMB)
 - GitHub Pages auto-deploy on push to master
 
-## What's done (v0.0 – v0.91)
+## What's done (v0.0 – v0.7)
 
-- Top-down 2D cell painter (orthographic camera, paint/erase/pan/zoom)
-- 3D free-fly camera (WASD + arrows + Q/E + Shift, right-click hold for mouselook, scroll to zoom toward cursor)
-- Flat seamless cell planes (PlaneGeometry, aligned to grid)
-- `Tab` toggles 2D/3D modes; `T` toggles texture panel, `B` toggles treasure box
-- Drag selection: Shift+LMB rubber-band in both 2D (grid-aligned) and 3D (screen-space projection)
+- Top-down 2D cell painter (orthographic camera, LMB drag fill, RMB erase, Space/MMB pan, scroll zoom)
+- 3D free-fly camera (WASD move, arrows look, Q/E up/down, Shift boost, RMB hold mouselook, scroll zoom-to-cursor)
+- Flat seamless cell planes (PlaneGeometry, aligned to grid, sky-blue fog background)
+- `Tab` toggles 2D/3D; `T` texture panel, `B` treasure box; `F` wireframe toggle
+- Drag selection: Shift+LMB free world-space rubber-band in 2D, screen-space projection in 3D
 - Selected cells get emissive tint; click empty space to deselect
 - T + B bottom panels with maximize (fullscreen) and minimize buttons
 - JSON export/import
 - Auto-save to localStorage
 - Status bar (mode / cell count / cursor coords / save state)
 - Help overlay shows current-mode controls
-- Space+LMB or MMB drag pan in 2D
 - Smooth-lerp mouselook with low sensitivity
 - GitHub Pages auto-deploy on push to master
 
@@ -80,6 +79,7 @@ Live at: `https://adcviha.github.io/chiral_hammer/`
 
 See DESIGN.md for the full roadmap. Immediate next:
 
+- **v0.71** — Bugfixes / polish as needed
 - **v0.8** — Selection transform (move, rotate, scale selected cells)
 - **v0.9** — Extend/array on drag
 - **v1** — Walls as edge quads + slice tool for doors/windows
