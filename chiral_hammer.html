@@ -381,7 +381,7 @@ const selRectMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: t
 const selRect = new THREE.Mesh(selRectGeo, selRectMat);
 selRect.rotation.x = -Math.PI / 2;
 selRect.position.y = 0.02;
-selRect.visible = false; selOutline.visible = false;
+selRect.visible = false;
 selRect.renderOrder = 998;
 scene.add(selRect);
 // Outline frame for rubber-band
