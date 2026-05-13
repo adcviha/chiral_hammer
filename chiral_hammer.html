@@ -507,8 +507,8 @@ function update3DCamera(deltaSec) {
 
   if (state.keys['KeyW']) state.camPos.addScaledVector(forward, moveSpeed);
   if (state.keys['KeyS']) state.camPos.addScaledVector(forward, -moveSpeed);
-  if (state.keys['KeyA']) state.camPos.addScaledVector(right, -moveSpeed);
-  if (state.keys['KeyD']) state.camPos.addScaledVector(right, moveSpeed);
+  if (state.keys['KeyA']) state.camPos.addScaledVector(right, moveSpeed);
+  if (state.keys['KeyD']) state.camPos.addScaledVector(right, -moveSpeed);
   if (state.keys['KeyQ']) state.camPos.y -= moveSpeed;
   if (state.keys['KeyE']) state.camPos.y += moveSpeed;
 
@@ -758,7 +758,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.1';
+const STORAGE_KEY = 'chiral_hammer:v0.2';
 
 function markDirty() {
   state.dirty = true;
@@ -773,7 +773,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.1,
+    version: 0.2,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -809,7 +809,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.1,
+    version: 0.2,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
