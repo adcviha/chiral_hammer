@@ -25,6 +25,16 @@ body {
 }
 #canvas-container canvas { display: block; }
 
+/* ===== SELECTION RUBBER-BAND (screen-space) ===== */
+#sel-box {
+  position: fixed;
+  border: 1px dotted #000000;
+  background: transparent;
+  pointer-events: none;
+  z-index: 15;
+  display: none;
+}
+
 /* ===== HELP OVERLAY — classic tooltip ===== */
 #help-overlay {
   position: fixed; top: 8px; left: 8px;
@@ -134,6 +144,9 @@ body {
 
 <div id="canvas-container"></div>
 
+<!-- SELECTION RUBBER-BAND -->
+<div id="sel-box"></div>
+
 <!-- HELP OVERLAY -->
 <div id="help-overlay">
   <div class="mode-label" id="help-mode">2D PAINT</div>
@@ -228,6 +241,8 @@ const state = {
   selecting: false,
   selectStart: new THREE.Vector2(),
   selectEnd: new THREE.Vector2(),
+  selectScreenStart: new THREE.Vector2(),  // screen coords for 3D selection
+  selectScreenEnd: new THREE.Vector2(),
   selectedCells: new Set(),   // Set of "x,z" keys
 
   // save flag
@@ -247,6 +262,7 @@ const sbCells = document.getElementById('sb-cells');
 const sbCursor = document.getElementById('sb-cursor');
 const sbSave = document.getElementById('sb-save');
 const importInput = document.getElementById('import-input');
+const selBox = document.getElementById('sel-box');
 
 // ===== THREE.JS SETUP =====
 
@@ -516,6 +532,37 @@ function commitSelection() {
   }
 }
 
+function commitSelection3D() {
+  const x1 = Math.min(state.selectScreenStart.x, state.selectScreenEnd.x);
+  const y1 = Math.min(state.selectScreenStart.y, state.selectScreenEnd.y);
+  const x2 = Math.max(state.selectScreenStart.x, state.selectScreenEnd.x);
+  const y2 = Math.max(state.selectScreenStart.y, state.selectScreenEnd.y);
+
+  if (x2 - x1 < 3 && y2 - y1 < 3) return;
+
+  // Deselect previous
+  for (const key of state.selectedCells) {
+    updateCellSelectionVisual(key, false);
+  }
+  state.selectedCells.clear();
+
+  const halfW = window.innerWidth / 2;
+  const halfH = window.innerHeight / 2;
+
+  for (const [key, mesh] of cellMeshes) {
+    const wp = mesh.position.clone().project(state.camera3D);
+    if (wp.z > 1) continue; // behind camera
+
+    const sx = (wp.x * 0.5 + 0.5) * window.innerWidth;
+    const sy = (-wp.y * 0.5 + 0.5) * window.innerHeight;
+
+    if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
+      state.selectedCells.add(key);
+      updateCellSelectionVisual(key, true);
+    }
+  }
+}
+
 function clearSelection() {
   for (const key of state.selectedCells) {
     updateCellSelectionVisual(key, false);
@@ -685,7 +732,17 @@ function onMouseDown(event) {
   }
 
   if (state.mode === '3d') {
-    if (event.button === 2) {
+    if (event.button === 0 && (state.keys['ShiftLeft'] || state.keys['ShiftRight'])) {
+      state.mouseDown = true;
+      state.selecting = true;
+      state.selectScreenStart.set(event.clientX, event.clientY);
+      state.selectScreenEnd.set(event.clientX, event.clientY);
+      selBox.style.display = 'block';
+      selBox.style.left = event.clientX + 'px';
+      selBox.style.top = event.clientY + 'px';
+      selBox.style.width = '0px';
+      selBox.style.height = '0px';
+    } else if (event.button === 2) {
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
       } else {
@@ -724,13 +781,30 @@ function onMouseMove(event) {
       paintAtMouse(event);
     }
   }
+
+  if (state.mode === '3d' && state.selecting) {
+    state.selectScreenEnd.set(event.clientX, event.clientY);
+    const x1 = Math.min(state.selectScreenStart.x, state.selectScreenEnd.x);
+    const y1 = Math.min(state.selectScreenStart.y, state.selectScreenEnd.y);
+    const x2 = Math.max(state.selectScreenStart.x, state.selectScreenEnd.x);
+    const y2 = Math.max(state.selectScreenStart.y, state.selectScreenEnd.y);
+    selBox.style.left = x1 + 'px';
+    selBox.style.top = y1 + 'px';
+    selBox.style.width = (x2 - x1) + 'px';
+    selBox.style.height = (y2 - y1) + 'px';
+  }
 }
 
 function onMouseUp(event) {
   if (state.selecting) {
-    commitSelection();
+    if (state.mode === '3d') {
+      commitSelection3D();
+      selBox.style.display = 'none';
+    } else {
+      commitSelection();
+      selRect.visible = false;
+    }
     state.selecting = false;
-    selRect.visible = false;
   }
 
   state.mouseDown = false;
@@ -845,6 +919,7 @@ function updateHelp() {
       <span class="key">Q/E</span> <span class="dim">down / up</span><br>
       <span class="key">Shift</span> <span class="dim">speed boost</span><br>
       <span class="key">RMB</span> <span class="dim">mouse look</span><br>
+      <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
       <span class="key">Esc</span> <span class="dim">release look</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 2D</span><br>
       <span class="key">T</span> <span class="dim">treasure box</span>
@@ -854,7 +929,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.5';
+const STORAGE_KEY = 'chiral_hammer:v0.6';
 
 function markDirty() {
   state.dirty = true;
@@ -869,7 +944,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.5,
+    version: 0.6,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -905,7 +980,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.5,
+    version: 0.6,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1011,6 +1086,7 @@ window.CHIRAL_HAMMER = {
   removeCell,
   clearAllCells,
   clearSelection,
+  commitSelection3D,
   saveState,
   loadState,
   exportJSON,
