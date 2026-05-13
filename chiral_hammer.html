@@ -28,7 +28,7 @@ body {
 /* ===== SELECTION RUBBER-BAND (screen-space) ===== */
 #sel-box {
   position: fixed;
-  border: 1px dotted #000000;
+  border: 2px dotted #000000;
   background: transparent;
   pointer-events: none;
   z-index: 15;
@@ -54,13 +54,41 @@ body {
 #help-overlay .key { color: #000080; font-weight: bold; }
 #help-overlay .dim { color: #808080; }
 
-/* ===== TREASURE BOX — bottom panel ===== */
-#treasure-box {
-  position: fixed; bottom: 22px; left: 0; right: 0;
+/* ===== TEXTURE PANEL — bottom-left ===== */
+#texture-panel {
+  position: fixed; bottom: 22px; left: 0;
   z-index: 20;
-  height: 180px;
+  width: 50%; height: 180px;
   background: #c0c0c0;
   border-top: 2px outset #ffffff;
+  border-right: 2px outset #ffffff;
+  display: none;
+}
+#texture-panel.open { display: block; }
+#texture-panel .tp-header {
+  background: #000080;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 11px;
+  padding: 2px 4px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+#texture-panel .tp-body {
+  padding: 8px;
+  font-size: 11px;
+  color: #000000;
+  overflow-y: auto;
+  height: calc(100% - 20px);
+}
+
+/* ===== TREASURE BOX — bottom-right ===== */
+#treasure-box {
+  position: fixed; bottom: 22px; right: 0;
+  z-index: 20;
+  width: 50%; height: 180px;
+  background: #c0c0c0;
+  border-top: 2px outset #ffffff;
+  border-left: 2px outset #ffffff;
   display: none;
 }
 #treasure-box.open { display: block; }
@@ -164,11 +192,22 @@ body {
 </div>
 <input type="file" id="import-input" accept=".json" style="display:none">
 
+<!-- TEXTURE PANEL -->
+<div id="texture-panel">
+  <div class="tp-header">
+    <span>TEXTURE LIBRARY</span>
+    <span style="font-size:10px">[T]</span>
+  </div>
+  <div class="tp-body">
+    No textures imported yet.<br>Paste (Ctrl+V) or drop an image to get started.
+  </div>
+</div>
+
 <!-- TREASURE BOX -->
 <div id="treasure-box">
   <div class="tb-header">
     <span>TREASURE BOX</span>
-    <span style="font-size:10px">[T]</span>
+    <span style="font-size:10px">[B]</span>
   </div>
   <div class="tb-body">
     No prefabs yet.<br>Select geometry and save to get started.
@@ -220,6 +259,7 @@ const state = {
   ],
   activeColor: '#8b7355',
   tbOpen: false,
+  tpOpen: false,
   camera2D: null,
   camera3D: null,
 
@@ -227,6 +267,8 @@ const state = {
   camPos: new THREE.Vector3(10, 10, 10),
   camYaw: -Math.PI / 4,
   camPitch: -0.5,
+  targetYaw: -Math.PI / 4,
+  targetPitch: -0.5,
 
   // Mouse / input state
   mouse: new THREE.Vector2(),
@@ -257,6 +299,7 @@ const helpMode = document.getElementById('help-mode');
 const helpKeys = document.getElementById('help-keys');
 const paletteEl = document.getElementById('palette');
 const treasureBox = document.getElementById('treasure-box');
+const texturePanel = document.getElementById('texture-panel');
 const sbMode = document.getElementById('sb-mode');
 const sbCells = document.getElementById('sb-cells');
 const sbCursor = document.getElementById('sb-cursor');
@@ -338,9 +381,18 @@ const selRectMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: t
 const selRect = new THREE.Mesh(selRectGeo, selRectMat);
 selRect.rotation.x = -Math.PI / 2;
 selRect.position.y = 0.02;
-selRect.visible = false;
+selRect.visible = false; selOutline.visible = false;
 selRect.renderOrder = 998;
 scene.add(selRect);
+// Outline frame for rubber-band
+const selOutlineGeo = new THREE.EdgesGeometry(selRectGeo);
+const selOutlineMat = new THREE.LineBasicMaterial({ color: 0x008888, depthTest: false });
+const selOutline = new THREE.LineSegments(selOutlineGeo, selOutlineMat);
+selOutline.rotation.x = -Math.PI / 2;
+selOutline.position.y = 0.021;
+selOutline.visible = false;
+selOutline.renderOrder = 997;
+scene.add(selOutline);
 
 // ===== SCRATCH OBJECTS (reused to avoid GC) =====
 
@@ -589,14 +641,21 @@ function update3DCamera(deltaSec) {
 
   const speed = state.keys['ShiftLeft'] || state.keys['ShiftRight'] ? 15 : 5;
   const moveSpeed = speed * deltaSec;
-  const lookSpeed = 2 * deltaSec;
+  const lookSensitivity = 0.8;
 
-  if (state.rightDown || document.pointerLockElement === renderer.domElement) {
-    state.camYaw -= state.mouse.x * lookSpeed;
-    state.camPitch -= state.mouse.y * lookSpeed;
-    state.camPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.camPitch));
+  // Accumulate mouse delta into target yaw/pitch while right mouse is held
+  if (state.rightDown) {
+    state.targetYaw -= state.mouse.x * lookSensitivity * deltaSec;
+    state.targetPitch -= state.mouse.y * lookSensitivity * deltaSec;
+    state.targetPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.targetPitch));
     state.mouse.set(0, 0);
   }
+
+  // Smooth lerp camera toward target
+  const lerpRate = 8;
+  const t = 1 - Math.exp(-lerpRate * deltaSec);
+  state.camYaw += (state.targetYaw - state.camYaw) * t;
+  state.camPitch += (state.targetPitch - state.camPitch) * t;
 
   const forward = new THREE.Vector3(
     Math.sin(state.camYaw) * Math.cos(state.camPitch),
@@ -634,6 +693,19 @@ function update3DCamera(deltaSec) {
 
 // ===== MODE SWITCHING =====
 
+function getCellBounds() {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  if (cellMeshes.size === 0) return null;
+  for (const mesh of cellMeshes.values()) {
+    const p = mesh.position;
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+  return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, span: Math.max(maxX - minX, maxZ - minZ, 2) };
+}
+
 function setMode(mode) {
   state.mode = mode;
   activeCamera = mode === '2d' ? state.camera2D : state.camera3D;
@@ -643,6 +715,16 @@ function setMode(mode) {
     sbCursor.textContent = '—';
   } else {
     highlightQuad.visible = false;
+
+    const bounds = getCellBounds();
+    if (bounds) {
+      const dist = Math.max(bounds.span * 1.2, 6);
+      state.camPos.set(bounds.cx + dist, dist * 0.6, bounds.cz + dist);
+      state.camYaw = -Math.PI / 4;
+      state.camPitch = -0.4;
+      state.targetYaw = state.camYaw;
+      state.targetPitch = state.camPitch;
+    }
     state.camera3D.position.copy(state.camPos);
   }
 
@@ -710,7 +792,7 @@ function onMouseDown(event) {
           state.selecting = true;
           state.selectStart.set(grid.gx, grid.gz);
           state.selectEnd.set(grid.gx, grid.gz);
-          selRect.visible = true;
+          selRect.visible = true; selOutline.visible = true;
         } else {
           clearSelection();
         }
@@ -743,13 +825,8 @@ function onMouseDown(event) {
       selBox.style.width = '0px';
       selBox.style.height = '0px';
     } else if (event.button === 2) {
-      if (document.pointerLockElement === renderer.domElement) {
-        document.exitPointerLock();
-      } else {
-        state.rightDown = true;
-        state.mouse.set(0, 0);
-        renderer.domElement.requestPointerLock();
-      }
+      state.rightDown = true;
+      state.mouse.set(0, 0);
     }
   }
 }
@@ -802,7 +879,7 @@ function onMouseUp(event) {
       selBox.style.display = 'none';
     } else {
       commitSelection();
-      selRect.visible = false;
+      selRect.visible = false; selOutline.visible = false;
     }
     state.selecting = false;
   }
@@ -837,15 +914,18 @@ function onKeyDown(event) {
   }
 
   if (event.code === 'KeyT') {
+    toggleTexturePanel();
+    return;
+  }
+
+  if (event.code === 'KeyB') {
     toggleTreasureBox();
     return;
   }
 
   if (event.code === 'Escape') {
-    if (state.tbOpen) {
-      toggleTreasureBox();
-      return;
-    }
+    if (state.tpOpen) { toggleTexturePanel(); return; }
+    if (state.tbOpen) { toggleTreasureBox(); return; }
   }
 }
 
@@ -882,6 +962,15 @@ function buildPalette() {
 
 // ===== TREASURE BOX =====
 
+function toggleTexturePanel() {
+  state.tpOpen = !state.tpOpen;
+  if (state.tpOpen) {
+    texturePanel.classList.add('open');
+  } else {
+    texturePanel.classList.remove('open');
+  }
+}
+
 function toggleTreasureBox() {
   state.tbOpen = !state.tbOpen;
   if (state.tbOpen) {
@@ -910,7 +999,7 @@ function updateHelp() {
       <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
-      <span class="key">T</span> <span class="dim">treasure box</span>
+      <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
   } else {
     helpMode.textContent = '3D FLY';
@@ -918,18 +1007,17 @@ function updateHelp() {
       <span class="key">WASD</span> <span class="dim">move</span><br>
       <span class="key">Q/E</span> <span class="dim">down / up</span><br>
       <span class="key">Shift</span> <span class="dim">speed boost</span><br>
-      <span class="key">RMB</span> <span class="dim">mouse look</span><br>
+      <span class="key">RMB hold</span> <span class="dim">mouse look</span><br>
       <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
-      <span class="key">Esc</span> <span class="dim">release look</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 2D</span><br>
-      <span class="key">T</span> <span class="dim">treasure box</span>
+      <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
   }
 }
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.6';
+const STORAGE_KEY = 'chiral_hammer:v0.7';
 
 function markDirty() {
   state.dirty = true;
@@ -944,7 +1032,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.6,
+    version: 0.7,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -980,7 +1068,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.6,
+    version: 0.7,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1087,6 +1175,8 @@ window.CHIRAL_HAMMER = {
   clearAllCells,
   clearSelection,
   commitSelection3D,
+  toggleTexturePanel,
+  toggleTreasureBox,
   saveState,
   loadState,
   exportJSON,
