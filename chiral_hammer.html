@@ -471,10 +471,11 @@ function update3DCamera(deltaSec) {
   const moveSpeed = speed * deltaSec;
   const lookSpeed = 2 * deltaSec;
 
-  if (state.rightDown && state.mouse.x !== 0 && state.mouse.y !== 0) {
+  if (state.rightDown || document.pointerLockElement === renderer.domElement) {
     state.camYaw -= state.mouse.x * lookSpeed;
     state.camPitch -= state.mouse.y * lookSpeed;
     state.camPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.camPitch));
+    state.mouse.set(0, 0);
   }
 
   const forward = new THREE.Vector3(
@@ -596,8 +597,13 @@ function onMouseDown(event) {
 
   if (state.mode === '3d') {
     if (event.button === 2) {
-      state.rightDown = true;
-      state.mouse.set(0, 0);
+      if (document.pointerLockElement === renderer.domElement) {
+        document.exitPointerLock();
+      } else {
+        state.rightDown = true;
+        state.mouse.set(0, 0);
+        renderer.domElement.requestPointerLock();
+      }
     }
   }
 }
@@ -611,7 +617,7 @@ function onMouseMove(event) {
   if (state.mode === '2d') {
     updateHighlight(event);
 
-    if (state.middleDown) {
+    if (state.middleDown || (state.keys['Space'] && state.mouseDown)) {
       pan2D(event.movementX, event.movementY);
       return;
     }
@@ -722,7 +728,7 @@ function updateHelp() {
     helpKeys.innerHTML = `
       <span class="key">LMB</span> <span class="dim">paint cell</span><br>
       <span class="key">RMB</span> <span class="dim">erase cell</span><br>
-      <span class="key">MMB drag</span> <span class="dim">pan</span><br>
+      <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
       <span class="key">T</span> <span class="dim">treasure box</span>
@@ -733,7 +739,8 @@ function updateHelp() {
       <span class="key">WASD</span> <span class="dim">move</span><br>
       <span class="key">Q/E</span> <span class="dim">down / up</span><br>
       <span class="key">Shift</span> <span class="dim">speed boost</span><br>
-      <span class="key">RMB drag</span> <span class="dim">look</span><br>
+      <span class="key">RMB</span> <span class="dim">mouse look</span><br>
+      <span class="key">Esc</span> <span class="dim">release look</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 2D</span><br>
       <span class="key">T</span> <span class="dim">treasure box</span>
     `;
@@ -742,7 +749,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.3';
+const STORAGE_KEY = 'chiral_hammer:v0.4';
 
 function markDirty() {
   state.dirty = true;
@@ -757,7 +764,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.3,
+    version: 0.4,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -793,7 +800,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.3,
+    version: 0.4,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
