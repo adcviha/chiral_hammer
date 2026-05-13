@@ -1,4 +1,4 @@
-# Chiral_Hammer — Design Document
+# Chiral Hammer — Design Document
 
 ## Vision
 
@@ -11,7 +11,7 @@ Guiding ethos: Bennett Foddy's **"be cheap to be generous"**. Tool simplicity is
 Eventually:
 
 - Low polygon counts
-- 64×64 (or smaller) textures, nearest-neighbor sampled
+- Textures authored at any resolution, then **crushed** to 64×64 (or 32×32, 128×128) with nearest-neighbor as a deliberate aesthetic step
 - Affine (non-perspective-corrected) texture mapping — the wobbly warp that defined PS1
 - Vertex snapping to integer pixel coordinates — the characteristic jitter
 - No bilinear filtering, no mipmaps
@@ -23,61 +23,119 @@ These are **renderer-side** effects, deferred until the **authoring** workflow i
 
 ## Intended workflow
 
-1. **Draw floor plans in 2D top-down.** Paint cells onto a grid to define rooms, paths, terraces, plazas.
-2. **Flip to 3D for bespoke features.** Pull cell corners up/down for heights, slopes, hills. Drop in freeform quads for overhangs, roofs, ramps — anything the grid can't express.
-3. **Texture faces.** Per-face or multi-select. Pick from the library, adjust UV offset/scale/rotation. Optionally subdivide a textured face to wobble individual vertices afterward.
-4. **Save reusable pieces to the treasure box** as prefabs — trees, houses, wall segments, columns, props.
-5. **Place prefab instances** through the world with per-instance rotation/scale/tint variation. Scatter brush for exteriors.
+1. **Draw floor plans in 2D top-down.** Paint cells onto a grid to define rooms, paths, plazas.
+2. **Place walls on cell edges.** Walls are vertical quads rising perpendicular from the grid. Toggle per-edge. Adjust height per segment.
+3. **Sculpt terrain with a weighted brush.** Push/pull grid corners up and down with a radius and falloff for natural hills, valleys, and ramps.
+4. **Slice openings into walls.** Select a wall face, draw a rectangle to subdivide it — delete the cut faces for a door or window.
+5. **Select and transform.** Shift+drag to select faces/cells. Move, rotate, scale selections. Extend/array on drag to stamp copies (build one floor, drag up 20).
+6. **Texture faces.** Paste screenshots or drop images. Assign to selected faces. Scale/offset/rotate UVs. Crush to low-res when the look is right. Subdivide a face while preserving UVs, then nudge vertices to align geometry with texture detail.
+7. **Save reusable pieces to the treasure box** as prefabs — trees, houses, wall segments.
+8. **Place prefab instances** with per-instance rotation/scale/tint. Scatter brush for exteriors.
+9. **Add a skybox.** An inverted cube faces-inward, each face individually selectable and texturable. Scale it huge for mountain backdrops.
 
 ## Geometry paradigm
 
-The world is one unified system, not two.
+The world is one unified system with complementary primitives.
 
 ### Cell grid (primary)
 - A coarse 3D grid of cells on the ground plane. v0 uses 1×1; may tune to 2×2 or 4×4 once heights land and real scale is felt.
-- Each cell will have **four corner heights** (v1). Default 0 = flat floor.
-- Pull a row of corners up → wall. Pull a strip → ceiling. Pull diagonally → slope. One primitive handles floors, walls, ceilings, hills, terraces.
-- Interiors and exteriors share the same grid, so they connect cleanly.
+- Each cell is a flat quad on the ground plane. Flat by default.
+- Cells always live on the grid — the 2D plan view is the authoring anchor.
 
-### Freeform quads (secondary)
-- For everything cells can't express: overhanging roofs, angled ramps, decorative geometry.
+### Walls (edge quads)
+- A wall is a vertical quad rising perpendicular to a cell edge.
+- Toggled per edge. Adjustable height per wall segment.
+- Walls belong to cell edges, not cell interiors. This separates "room layout" (cells) from "vertical boundaries" (walls).
+- Walls are selectable, texturable, and sliceable just like cell faces.
+
+### Terrain sculpting (weighted brush)
+- A push/pull brush with radius and falloff raises or lowers cell corners.
+- LMB to raise, RMB to lower. Center of brush = maximum effect, edges = gradual.
+- Creates natural hills, valleys, ramps, and pits without clicking individual corners.
+- 2D mode shows a height heatmap overlay so plan-view isn't blind to elevation.
+
+### Slice tool (doors and windows)
+- Select a wall face, activate slice tool, draw a rectangle on the face.
+- The face is subdivided — the cut region becomes separate quads.
+- Delete the cut faces to create an opening (door, window).
+- Inset or offset the cut faces for window frames.
+- Same tool works on cell faces (floor hatches, ceiling openings).
+
+### Freeform quads (secondary, later)
+- For everything cells and walls can't express: overhanging roofs, angled ramps, decorative geometry.
 - Place anywhere in 3D, drag vertices to position.
-- Same texturing and selection system as cell faces.
+- Same texturing and selection system as cells and walls.
+
+### Skybox (world object)
+- An inverted cube at origin, camera inside. All 6 faces individually selectable and texturable.
+- Can select all faces at once for seamless panoramic assignment.
+- Scale arbitrarily — huge for mountain backdrops, tight for indoor ceilings.
+- Not part of the cell grid. A separate "world" layer.
 
 ### Why this paradigm
 - The 2D plan view matches the floor-plan workflow designers already know (Doom Builder, SketchUp).
-- Cell grid is far more accessible than vertex/edge/face editing.
+- Separating cells (floors) from walls (edges) from terrain (corner heights) means each tool does one thing well.
 - Freeform quads are the escape hatch — used sparingly, not as the default.
-- One texturing system, one prefab system, one selection model across both.
+- One texturing system, one prefab system, one selection model across all primitives.
+
+## Selection + transform
+
+### Selection
+- **Shift+LMB drag** draws a rubber-band rectangle. In 2D mode it selects on the grid. In 3D mode it selects by screen-space projection.
+- Click empty space to deselect.
+- Selected faces/cells get an emissive tint highlight.
+
+### Transform
+- Once selected: **move, rotate, scale** the selection as a unit.
+- Grid-snapped by default. Hold a modifier for free placement.
+- Works across cell faces, wall quads, and freeform quads.
+
+### Extend / array on drag
+- Select faces, hold a modifier, drag in a direction.
+- At each grid interval, a copy is stamped.
+- Build one floor of a skyscraper, drag up to repeat 20 times.
+- No clipboard, no dialog — just drag to repeat.
+
+### Face splitting
+- Select a textured face, subdivide it into smaller quads.
+- **UVs are preserved across the split** — the texture stays aligned.
+- Then nudge individual vertices to match geometry to texture detail.
+- Essential for aligning wall geometry to a pasted screenshot of a building facade.
 
 ## Texture pipeline
 
-User's intuition: screenshot textures from Google Maps or other public sources, crush them to 64×64, make them tile, assign per-face.
+The core loop: **screenshot → paste → assign → nudge → crush**.
 
-### In-tool texture prep
-1. Drop image (or paste from clipboard).
-2. Crop with aspect lock to power-of-2.
-3. Resize to 64×64 (or 32×32, 128×128) with nearest-neighbor.
-4. **Affine light flatten** — divide image by a heavily blurred version of itself, then renormalize. Kills the baked directional sunlight in satellite imagery.
-5. **Palette quantize** to 16 or 32 colors. Optional dithering.
-6. **Seamless tile helper** — drag the seam line, preview tiling live, clone-stamp out joins.
-7. Save to texture library.
+### Import
+- Paste from clipboard (Ctrl+V) or drop an image file.
+- Any resolution accepted. The tool works at native res during authoring.
+- Images land in the texture library panel (T key).
 
 ### Per-face assignment
-- Click a face → pick texture → adjust UV offset/scale/rotation in 2D.
-- Multi-select faces, assign to all at once.
-- **Split face** preserves UVs across the split — texture a wall as one piece, then chop it into smaller quads to wobble individual vertices.
+- Select one or more faces → pick a texture from the library.
+- Adjust UV scale, offset, and rotation per face or across the whole selection.
+- Same texture on multiple faces? Adjust UVs per face to tile or align as needed.
+
+### Crush (aesthetic pass)
+- When the look is right, crush the texture to 64×64, 32×32, or 128×128 with nearest-neighbor sampling.
+- This is a deliberate aesthetic step, not a technical limitation.
+- The full-res source is preserved in the library; crush creates a copy.
+- **Affine light flatten** — divide image by a heavily blurred version of itself, then renormalize. Kills baked directional sunlight in satellite imagery.
+- **Palette quantize** to 16 or 32 colors. Optional dithering.
+
+### Seamless tile helper
+- Drag the seam line, preview tiling live, clone-stamp out visible joins.
 
 ### Shared library
 - Textures are global, not per-prefab. One brick texture used in 50 prefabs and the ground = one image, not 51 copies.
-- Edit a texture, every face using it updates instantly. Maximum "cheap to be generous."
+- Edit a texture, every face using it updates instantly.
 
 ## Prefab system
 
 ### Save flow
-- Select geometry (faces, quads, sub-meshes).
-- Press a key, name it.
-- The selection becomes an *instance* of the new prefab. The prefab appears in the treasure box as a thumbnail.
+- Select geometry (faces, walls, quads).
+- Save to treasure box (B key), name it.
+- The selection becomes an *instance* of the new prefab. Appears as a thumbnail.
 
 ### Instances
 - Reference the source prefab.
@@ -91,11 +149,11 @@ User's intuition: screenshot textures from Google Maps or other public sources, 
 
 ### No cascading
 - Prefabs cannot contain other prefab references. A house contains raw geometry; a village is built by placing house instances by hand.
-- Decided early: simpler mental model, easier to debug. Reconsider only if it becomes a real pain point.
+- Simpler mental model, easier to debug. Reconsider only if it becomes a real pain point.
 
 ## Scatter brush (later)
 
-For exteriors. Pick a prefab (or a weighted set), drag the cursor, instances stamp along the path with randomized:
+For exteriors. Pick a prefab (or a weighted set), drag the cursor, instances stamp along the path with randomization:
 
 - Yaw rotation
 - Uniform scale (range)
@@ -112,54 +170,79 @@ Modes:
 - 90s HTML aesthetic. System fonts (MS Sans Serif). Classic Windows 9x gray (#c0c0c0). Beveled `outset`/`inset` borders. Navy (#000080) title bars. Yellow tooltip help. Web-safe colors. No rounded corners, no shadows, no gradients, no transparency effects.
 - Status bar always visible — mode, cell count, cursor coords, save state. Classic Windows sunken-panel style.
 - Help overlay top-left always shows current-mode controls. Classic tooltip style (yellow bg, black border).
-- Single-key toggles for things you do constantly (`Tab` for mode, `T` for treasure box).
-- Panels appear/disappear instantly (no transitions) — they don't eat the canvas when closed.
+- Single-key toggles: `Tab` for 2D/3D mode, `T` for texture library panel, `B` for treasure box / asset library.
+- Panels appear at the bottom above the status bar. T and B panels sit side by side. Appear/disappear instantly (no transitions).
 
 ## Roadmap
 
-### v0 — DONE
-Top-down cell painter, 3D free-fly preview, treasure box scaffold, persistence, JSON export/import.
+### v0.7 — Polish fly controls + selection
+- Thicker rubber-band borders for both 2D and 3D selection
+- 3D camera starts centered on the painted mesh
+- Right-click hold (not toggle) for mouselook, lower sensitivity, smooth interpolation
+- T = texture panel (scaffold), B = treasure box (rename from current T)
 
-### v1 — Heights
-- Click a cell corner in 3D mode, drag up/down.
-- 2D mode shows a height heatmap or contour overlay so plans aren't blind.
-- Lighting that responds to new geometry.
+### v0.8 — Selection transform
+- Move selected cells/faces
+- Uniform scale selected cells
+- Grid-snapped by default, free with modifier
 
-### v2 — Texturing
-- Texture library panel.
-- In-tool import + 64×64 crush.
-- Per-face texture assignment with UV controls.
-- Seamless tile helper.
-- Affine light flatten.
+### v0.9 — Extend / array on drag
+- Modifier+drag to stamp copies of selection at grid intervals
+- Build repeating structures (floors, fences, columns) in one gesture
+
+### v1 — Walls
+- Toggle wall on a cell edge — vertical quad rising perpendicular
+- Adjustable height per wall segment
+- Walls selectable and texturable like cell faces
+
+### v1.1 — Terrain brush
+- Weighted push/pull brush with radius and falloff
+- 2D height heatmap overlay
+- Lighting responds to elevation changes
+
+### v1.2 — Slice tool + face splitting
+- Draw rectangle on a face to subdivide it
+- Delete cut faces for doors/windows
+- Split preserves UVs — nudge vertices after to match geometry to texture
+
+### v2 — Texture pipeline
+- Texture library panel (T key)
+- Paste from clipboard, drop files — any resolution
+- Per-face UV: scale, offset, rotate
+- Crush to low-res as an aesthetic pass (nearest-neighbor)
+- Affine light flatten, palette quantize
+- Seamless tile helper
+- Skybox (inverted cube, per-face texture assignment)
 
 ### v3 — Freeform quads
-- Drop a quad at the cursor in 3D mode.
-- Drag vertices to position.
-- Texture and select like cell faces.
+- Drop a quad at the cursor in 3D mode
+- Drag vertices to position
+- Texture and select like cell faces
 
 ### v4 — Prefabs proper
-- Selection system (box-select faces / quads / cells).
-- Save selection as prefab → treasure box.
-- Drag from treasure box to place instances.
-- Per-instance transform + tint.
+- Save selection as prefab → treasure box (B key)
+- Drag from treasure box to place instances
+- Per-instance transform + tint
+- Detach to raw geometry
 
 ### v5 — Scatter brush
-- Stamp / path / area modes.
-- Density and jitter sliders.
+- Stamp / path / area modes
+- Density and jitter sliders
 
 ### v6 — PS1 renderer
-- Render to small framebuffer, nearest-neighbor upscale.
-- Affine texture mapping in shader.
-- Vertex snap to pixel coords for jitter.
-- Optional dithering pass.
+- Render to small framebuffer, nearest-neighbor upscale
+- Affine texture mapping in shader
+- Vertex snap to pixel coords for jitter
+- Optional dithering pass
 
 ## Open questions
 
-- **Cell size.** v0 uses 1×1. PS1-era interiors might want 2×2 or 4×4 so "rooms feel like rooms" instead of "every step is a cell." Decide once heights land.
-- **Multi-floor support.** For a 2-story building, do you add a second cell layer or make it a prefab with internal cells? Probably the latter. TBD.
-- **Outdoor terrain.** Cell grid + corner heights handles hills, but does it feel natural? Maybe a "noise pass" that randomizes corner heights within a region. Defer until v1 is tested.
+- **Cell size.** v0 uses 1×1. PS1-era interiors might want 2×2 or 4×4 so "rooms feel like rooms." Decide once walls land.
+- **Multi-floor support.** For a 2-story building, likely a second cell layer or prefabs with internal cells. TBD.
+- **Outdoor terrain.** Does the weighted terrain brush feel natural? Test when v1.1 lands.
 - **Lighting model.** PS1 was mostly vertex-colored / unlit. Ship a "bake vertex lighting" pass, or stay flat-shaded? Decide when textures arrive.
-- **Game-engine export.** When the user is ready to ship a game, what format do they want? Three.js JSON? glTF? Custom JSON with cell data + prefab refs? Probably the last, but defer.
+- **Game-engine export.** Custom JSON with cell data + wall data + prefab refs? Probably. Defer.
+- **Skybox vs sky dome.** Cube is simpler and matches the low-poly aesthetic. A dome might feel more natural for outdoor scenes. Start with cube, reconsider if it feels wrong.
 
 ## Non-goals
 

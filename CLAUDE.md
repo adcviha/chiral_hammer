@@ -4,7 +4,8 @@ Working notes for any Claude session picking up this project.
 
 ## TL;DR
 
-**Chiral Hammer** is a single-file HTML editor for building low-fidelity 3D maps for casual games. PS1-era aesthetic is the target. Accessibility and simplicity of tooling are treated as *part of the art* — Bennett Foddy's "be cheap to be generous" philo
+**Chiral Hammer** is a single-file HTML editor for building low-fidelity 3D maps for casual games. PS1-era aesthetic is the target. Accessibility and simplicity of tooling are treated as *part of the art* — Bennett Foddy's "be cheap to be generous" philosophy applied to level design.
+
 The user is an indie game designer in early prototyping. They are not a hardcore 3D person. The tool's job is to make level authoring feel like one coherent thing instead of a pipeline.
 
 ## Hard constraints
@@ -31,35 +32,48 @@ Don't break these without checking first:
 
 ```
 chiral_hammer.html  — the entire editor (HTML + CSS + JS in one file)
-DESIGN.md        — vision, geometry paradigm, roadmap
-CLAUDE.md        — this file
+DESIGN.md           — vision, geometry paradigm, roadmap
+CLAUDE.md           — this file
+index.html          — redirect for GitHub Pages root URL
 ```
 
 ## How to run / test
 
-Open `chiral_hammer.html` directly in a modern browser. No server needed. State persists to `localStorage` under key `chiral_hammer:v0`. To wipe state during development: clear that key in DevTools, or hit the CLEAR button in the UI.
+Open `chiral_hammer.html` directly in a modern browser. No server needed. State persists to `localStorage` under key `chiral_hammer:v0.6`. To wipe state during development: clear that key in DevTools, or hit the CLEAR button in the UI.
 
-## What's done (v0)
+Live at: `https://adcviha.github.io/chiral_hammer/`
+
+## What's done (v0.0 – v0.6)
 
 - Top-down 2D cell painter (orthographic camera, paint/erase/pan/zoom)
-- 3D free-fly camera (WASD + Q/E + shift, right-mouse hold to look)
-- `Tab` toggles modes; `T` toggles the treasure box panel
-- Treasure box panel (toggleable, scaffold with empty state — no save flow yet)
+- 3D free-fly camera (WASD + Q/E + Shift, right-click hold for mouselook, pointer lock)
+- Flat seamless cell planes (PlaneGeometry, aligned to grid)
+- `Tab` toggles 2D/3D modes; `T` toggles treasure box panel (bottom)
+- Drag selection: Shift+LMB rubber-band in both 2D (grid-aligned) and 3D (screen-space projection)
+- Selected cells get emissive tint; click empty space to deselect
+- Treasure box panel (bottom, scaffold — no save flow yet)
 - JSON export/import
 - Auto-save to localStorage
 - Status bar (mode / cell count / cursor coords / save state)
 - Help overlay shows current-mode controls
+- Space+LMB pan in 2D (trackpad-friendly alternative to MMB)
+- GitHub Pages auto-deploy on push to master
 
-## What's deliberately NOT done yet
+## What's next (v0.7)
 
-These are next milestones, not oversights. See DESIGN.md for the roadmap:
+See DESIGN.md for the full roadmap. Immediate next:
 
-- **Cell corner heights** (v1) — v0 cells are flat plates only.
-- **Texturing** (v2) — no textures, no library, no per-face UV.
-- **Freeform quads** (v3) — for geometry the cell grid can't express.
-- **Prefab save flow** (v4) — the treasure box exists but selection-and-save isn't wired up.
-- **Scatter brush** (v5) — for exterior placement of trees / rocks / grass.
-- **PS1 renderer effects** (v6) — affine warping, vertex jitter, low-res upscale. Deliberately deferred until authoring is solid.
+- **v0.7** — Thicker selection borders, 3D cam starts centered on mesh, right-click hold (not toggle) for mouselook with low sensitivity + smooth interpolation, T=textures scaffold / B=treasure box rename
+- **v0.8** — Selection transform (move, rotate, scale selected cells)
+- **v0.9** — Extend/array on drag
+- **v1** — Walls as edge quads + slice tool for doors/windows
+- **v1.1** — Terrain brush (weighted push/pull with radius)
+- **v1.2** — Face splitting preserving UVs
+- **v2** — Texture pipeline (paste, assign, UV adjust, crush)
+
+## Version incrementing
+
+Each change bumps the `.X` in the version number. The localStorage key is `chiral_hammer:v0.X` and the exported JSON carries `version: 0.X`. Git commits are tagged with the version in the message. Push to master auto-deploys to GitHub Pages.
 
 ## When making changes
 
@@ -67,9 +81,10 @@ These are next milestones, not oversights. See DESIGN.md for the roadmap:
 - Don't introduce a build step "to make things cleaner." The build step IS the cost.
 - If a feature is getting complex, that's a signal to redesign the workflow, not pile on code.
 - Match the user's pace. They are still in planning + early prototyping. Don't over-engineer ahead of decisions they haven't made.
+- One commit per version increment. Don't batch unrelated changes.
 
 ## When to push back
 
 - A user request that would require adding a framework, build chain, or large dependency — flag the tradeoff before doing it.
-- A feature that conflicts with PS1-era simplicity (PBR, fancy shadows, smooth subdivision) — conf
+- A feature that conflicts with PS1-era simplicity (PBR, fancy shadows, smooth subdivision) — conflicts with the aesthetic target.
 - Anything cascading or recursive (prefabs containing prefabs, nested editors) — the user explicitly chose to keep the mental model flat.
