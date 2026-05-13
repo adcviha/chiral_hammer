@@ -3,146 +3,132 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chiral Hammer — Map Crafter</title>
+<meta name="generator" content="Notepad">
+<title>Chiral Hammer</title>
 <style>
-/* ===== RESET & BASE ===== */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ===== CHIRAL HAMMER — 90s HTML AESTHETIC ===== */
 
-:root {
-  --bg: #0d0d0d;
-  --surface: #1a1a1a;
-  --border: #2a2a2a;
-  --text: #c0c0c0;
-  --text-dim: #707070;
-  --amber: #ffb000;
-  --amber-dim: #996a00;
-  --cyan: #00bfff;
-  --cyan-dim: #007799;
-  --red: #cc3333;
-  --font: 'Courier New', Courier, monospace;
-  --font-size: 12px;
-  --bar-height: 28px;
-}
+* { margin: 0; padding: 0; }
 
-html, body {
-  width: 100%; height: 100%;
+body {
+  background: #000000;
+  font-family: "MS Sans Serif", "Microsoft Sans Serif", Geneva, sans-serif;
+  font-size: 11px;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-  font-size: var(--font-size);
-  user-select: none;
+  color: #000000;
 }
 
 /* ===== CANVAS ===== */
 #canvas-container {
-  position: fixed; inset: 0;
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
   z-index: 1;
 }
 #canvas-container canvas { display: block; }
 
-/* ===== HELP OVERLAY ===== */
+/* ===== HELP OVERLAY — classic tooltip ===== */
 #help-overlay {
   position: fixed; top: 8px; left: 8px;
   z-index: 10;
-  background: rgba(13,13,13,0.85);
-  border: 1px solid var(--border);
-  padding: 8px 12px;
-  pointer-events: none;
+  background: #ffffcc;
+  border: 1px solid #000000;
+  padding: 4px 8px;
+  font-size: 11px;
   line-height: 1.6;
+  pointer-events: none;
 }
 #help-overlay .mode-label {
-  color: var(--amber);
   font-weight: bold;
+  color: #000080;
   margin-bottom: 2px;
 }
-#help-overlay .key { color: var(--cyan); }
-#help-overlay .dim { color: var(--text-dim); }
+#help-overlay .key { color: #000080; font-weight: bold; }
+#help-overlay .dim { color: #808080; }
 
-/* ===== TREASURE BOX ===== */
+/* ===== TREASURE BOX — classic dialog ===== */
 #treasure-box {
   position: fixed; top: 0; right: 0;
   z-index: 20;
-  width: 280px; height: 100%;
-  background: var(--surface);
-  border-left: 1px solid var(--border);
-  transform: translateX(100%);
-  transition: transform 0.2s ease;
-  display: flex; flex-direction: column;
+  width: 260px; height: 100%;
+  background: #c0c0c0;
+  border-left: 2px outset #ffffff;
+  display: none;
 }
-#treasure-box.open { transform: translateX(0); }
-
+#treasure-box.open { display: block; }
 #treasure-box .tb-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  color: var(--amber);
+  background: #000080;
+  color: #ffffff;
   font-weight: bold;
+  font-size: 11px;
+  padding: 2px 4px;
+  display: flex; align-items: center; justify-content: space-between;
 }
 #treasure-box .tb-body {
-  flex: 1; overflow-y: auto;
-  padding: 12px;
-  color: var(--text-dim);
-  display: flex; align-items: center; justify-content: center;
-  text-align: center;
+  padding: 8px;
+  font-size: 11px;
+  color: #000000;
 }
 
-/* ===== STATUS BAR ===== */
+/* ===== STATUS BAR — classic Windows 9x ===== */
 #status-bar {
   position: fixed; bottom: 0; left: 0; right: 0;
   z-index: 10;
-  height: var(--bar-height);
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  display: flex; align-items: center;
-  padding: 0 12px;
-  gap: 16px;
+  height: 22px;
+  background: #c0c0c0;
+  border-top: 1px solid #ffffff;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  gap: 2px;
+  font-size: 11px;
 }
-#status-bar .sb-item { display: flex; align-items: center; gap: 6px; }
-#status-bar .sb-label { color: var(--text-dim); text-transform: uppercase; }
-#status-bar .sb-value { color: var(--text); }
-#status-bar .sb-amber { color: var(--amber); }
-#status-bar .sb-cyan { color: var(--cyan); }
-#status-bar .sb-saved { color: #44aa44; }
+#status-bar .sb-panel {
+  border: 1px inset #ffffff;
+  padding: 1px 6px;
+  height: 18px;
+  display: flex; align-items: center;
+}
+#status-bar .sb-label { color: #808080; margin-right: 4px; }
 #status-bar .sb-spacer { flex: 1; }
 
-/* ===== COLOR PALETTE (2D mode) ===== */
+/* ===== PALETTE — classic toolbar ===== */
 #palette {
   position: fixed; top: 8px; right: 8px;
   z-index: 10;
-  display: flex; gap: 4px;
-  background: rgba(13,13,13,0.85);
-  border: 1px solid var(--border);
-  padding: 6px 8px;
+  display: flex; gap: 2px;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 3px;
 }
 #palette .swatch {
-  width: 18px; height: 18px;
-  border: 1px solid var(--border);
+  width: 16px; height: 16px;
+  border: 1px inset #ffffff;
   cursor: pointer;
 }
 #palette .swatch.active {
-  border-color: var(--cyan);
-  box-shadow: 0 0 6px var(--cyan);
+  border: 2px outset #000080;
 }
 
-/* ===== BUTTONS ROW ===== */
+/* ===== BUTTONS — classic 3D bevel ===== */
 #btn-row {
-  position: fixed; top: 8px; right: 160px;
+  position: fixed; top: 44px; right: 8px;
   z-index: 10;
-  display: flex; gap: 6px;
+  display: flex; gap: 4px;
 }
 .tool-btn {
-  font-family: var(--font); font-size: var(--font-size);
-  background: rgba(13,13,13,0.85);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 11px;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 2px 10px;
   cursor: pointer;
+  color: #000000;
 }
-.tool-btn:hover { border-color: var(--amber); color: var(--amber); }
+.tool-btn:active {
+  border-style: inset;
+}
 </style>
 </head>
-<body>
+<body bgcolor="#000000" text="#000000">
 
 <div id="canvas-container"></div>
 
@@ -167,7 +153,7 @@ html, body {
 <div id="treasure-box">
   <div class="tb-header">
     <span>TREASURE BOX</span>
-    <span class="dim" style="font-size:10px">[T]</span>
+    <span style="font-size:10px">[T]</span>
   </div>
   <div class="tb-body">
     No prefabs yet.<br>Select geometry and save to get started.
@@ -176,22 +162,21 @@ html, body {
 
 <!-- STATUS BAR -->
 <div id="status-bar">
-  <div class="sb-item">
-    <span class="sb-label">MODE</span>
-    <span class="sb-value sb-amber" id="sb-mode">2D PAINT</span>
+  <div class="sb-panel">
+    <span class="sb-label">MODE:</span>
+    <span id="sb-mode">2D PAINT</span>
   </div>
-  <div class="sb-item">
-    <span class="sb-label">CELLS</span>
-    <span class="sb-value sb-cyan" id="sb-cells">0</span>
+  <div class="sb-panel">
+    <span class="sb-label">CELLS:</span>
+    <span id="sb-cells">0</span>
   </div>
-  <div class="sb-item">
-    <span class="sb-label">CURSOR</span>
-    <span class="sb-value" id="sb-cursor">—</span>
+  <div class="sb-panel">
+    <span class="sb-label">CURSOR:</span>
+    <span id="sb-cursor">—</span>
   </div>
   <span class="sb-spacer"></span>
-  <div class="sb-item">
-    <span class="sb-label">SAVE</span>
-    <span class="sb-value sb-saved" id="sb-save">SAVED</span>
+  <div class="sb-panel">
+    <span id="sb-save">SAVED</span>
   </div>
 </div>
 
@@ -260,7 +245,7 @@ const importInput = document.getElementById('import-input');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x0d0d0d);
+renderer.setClearColor(0x000000);
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -294,7 +279,7 @@ scene.add(dirLight);
 
 // Ground / grid plane
 const gridSize = 50;
-const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x333333, 0x1a1a1a);
+const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x404040, 0x202020);
 gridHelper.position.y = 0.001;
 scene.add(gridHelper);
 
@@ -314,7 +299,7 @@ scene.add(cellGroup);
 
 // Highlight quad under cursor in 2D mode
 const highlightGeo = new THREE.PlaneGeometry(1, 1);
-const highlightMat = new THREE.MeshBasicMaterial({ color: 0x00bfff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthTest: false });
+const highlightMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthTest: false });
 const highlightQuad = new THREE.Mesh(highlightGeo, highlightMat);
 highlightQuad.rotation.x = -Math.PI / 2;
 highlightQuad.position.y = 0.01;
@@ -380,7 +365,6 @@ function clearAllCells() {
 // ===== CELL MESHES =====
 
 function makeCellGeometry() {
-  // Slightly smaller than 1x1 for visible grid lines between cells
   return new THREE.BoxGeometry(0.94, 0.15, 0.94);
 }
 
@@ -417,7 +401,6 @@ function removeCellMesh(gx, gz) {
     cellGroup.remove(mesh);
     mesh.geometry.dispose();
     mesh.material.dispose();
-    // dispose edge child
     if (mesh.children[0]) {
       mesh.children[0].geometry.dispose();
       mesh.children[0].material.dispose();
@@ -437,18 +420,15 @@ function updateCellColor(gx, gz, color) {
 // ===== 2D INPUT =====
 
 function getGridFromMouse(event) {
-  // Convert mouse to NDC
   _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
   _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
   _raycaster.setFromCamera(_ndc, activeCamera);
 
-  // Intersect with ground plane (y=0)
   const target = new THREE.Vector3();
   const rayOrigin = _raycaster.ray.origin;
   const rayDir = _raycaster.ray.direction;
 
-  // Ray-plane intersection with y=0 plane
   const denom = rayDir.y;
   if (Math.abs(denom) < 0.0001) return null;
   const t = -rayOrigin.y / denom;
@@ -456,7 +436,6 @@ function getGridFromMouse(event) {
 
   target.copy(rayOrigin).addScaledVector(rayDir, t);
 
-  // Round to grid
   const gx = Math.round(target.x);
   const gz = Math.round(target.z);
   return { gx, gz, worldX: target.x, worldZ: target.z };
@@ -467,12 +446,12 @@ function paintAtMouse(event) {
   if (!grid) return;
   if (state.mode !== '2d') return;
 
-  if (event.buttons & 1) { // left button = paint
+  if (event.buttons & 1) {
     if (!cellExists(grid.gx, grid.gz)) {
       setCell(grid.gx, grid.gz, state.activeColor);
       updateStatusBar();
     }
-  } else if (event.buttons & 2) { // right button = erase
+  } else if (event.buttons & 2) {
     if (cellExists(grid.gx, grid.gz)) {
       removeCell(grid.gx, grid.gz);
       updateStatusBar();
@@ -493,7 +472,6 @@ function updateHighlight(event) {
   highlightQuad.position.set(grid.gx, 0.01, grid.gz);
   highlightQuad.visible = true;
 
-  // Update status bar cursor coords
   sbCursor.textContent = `${grid.gx}, ${grid.gz}`;
   state.mouseWorld2D.set(grid.worldX, 0, grid.worldZ);
 }
@@ -507,14 +485,12 @@ function update3DCamera(deltaSec) {
   const moveSpeed = speed * deltaSec;
   const lookSpeed = 2 * deltaSec;
 
-  // Mouse look
   if (state.rightDown && state.mouse.x !== 0 && state.mouse.y !== 0) {
     state.camYaw -= state.mouse.x * lookSpeed;
     state.camPitch -= state.mouse.y * lookSpeed;
     state.camPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.camPitch));
   }
 
-  // WASD movement
   const forward = new THREE.Vector3(
     Math.sin(state.camYaw) * Math.cos(state.camPitch),
     Math.sin(state.camPitch),
@@ -534,10 +510,8 @@ function update3DCamera(deltaSec) {
   if (state.keys['KeyQ']) state.camPos.y -= moveSpeed;
   if (state.keys['KeyE']) state.camPos.y += moveSpeed;
 
-  // Clamp height
   state.camPos.y = Math.max(0.5, state.camPos.y);
 
-  // Look target
   const lookTarget = new THREE.Vector3(
     state.camPos.x + Math.sin(state.camYaw) * Math.cos(state.camPitch),
     state.camPos.y + Math.sin(state.camPitch),
@@ -547,7 +521,6 @@ function update3DCamera(deltaSec) {
   state.camera3D.position.copy(state.camPos);
   state.camera3D.lookAt(lookTarget);
 
-  // Update status bar
   sbCursor.textContent =
     `${state.camPos.x.toFixed(1)}, ${state.camPos.y.toFixed(1)}, ${state.camPos.z.toFixed(1)}`;
 }
@@ -558,20 +531,17 @@ function setMode(mode) {
   state.mode = mode;
   activeCamera = mode === '2d' ? state.camera2D : state.camera3D;
 
-  // In 2D mode, reset camera position
   if (mode === '2d') {
     highlightQuad.visible = true;
     sbCursor.textContent = '—';
   } else {
     highlightQuad.visible = false;
-    // Sync 3D camera pos from state
     state.camera3D.position.copy(state.camPos);
   }
 
   updateHelp();
   updateStatusBar();
 
-  // Update renderer size for new camera
   renderer.setSize(window.innerWidth, window.innerHeight);
   if (mode === '2d') {
     update2DCameraAspect();
@@ -607,7 +577,6 @@ function zoom2D(delta, cursorX, cursorY) {
   const newZoom = Math.max(0.25, Math.min(8, oldZoom * (1 - delta * 0.001)));
   state.camera2D.zoom = newZoom;
 
-  // Zoom toward cursor
   const ndcX = (cursorX / window.innerWidth) * 2 - 1;
   const ndcY = -(cursorY / window.innerHeight) * 2 + 1;
   const worldBefore = _v3.set(ndcX / oldZoom, 0, ndcY / oldZoom)
@@ -673,7 +642,6 @@ function onMouseUp(event) {
   state.middleDown = false;
   state.rightDown = false;
 
-  // Trigger save after paint session
   if (state.dirty) {
     scheduleSave();
   }
@@ -683,7 +651,6 @@ function onWheel(event) {
   if (state.mode === '2d') {
     zoom2D(event.deltaY, event.clientX, event.clientY);
   }
-  // In 3D mode, scroll does nothing (or could adjust speed)
 }
 
 function onContextMenu(event) {
@@ -693,20 +660,17 @@ function onContextMenu(event) {
 function onKeyDown(event) {
   state.keys[event.code] = true;
 
-  // Tab: toggle mode
   if (event.code === 'Tab') {
     event.preventDefault();
     setMode(state.mode === '2d' ? '3d' : '2d');
     return;
   }
 
-  // T: toggle treasure box
   if (event.code === 'KeyT') {
     toggleTreasureBox();
     return;
   }
 
-  // Escape: close treasure box if open
   if (event.code === 'Escape') {
     if (state.tbOpen) {
       toggleTreasureBox();
@@ -728,11 +692,6 @@ function onResize() {
     state.camera3D.updateProjectionMatrix();
   }
 }
-
-// ===== POINTER LOCK for 3D =====
-
-// We don't use pointer lock. Instead, right-mouse-hold + move for look.
-// MovementX/Y from mousemove works without pointer lock when any button is held.
 
 // ===== PALETTE =====
 
@@ -797,13 +756,12 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'mapcrafter:v0';
+const STORAGE_KEY = 'chiral_hammer:v0';
 
 function markDirty() {
   state.dirty = true;
   sbSave.textContent = 'UNSAVED';
-  sbSave.className = 'sb-value';
-  sbSave.style.color = '#cc8833';
+  sbSave.style.color = '#ff0000';
 }
 
 function scheduleSave() {
@@ -820,10 +778,10 @@ function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     state.dirty = false;
     sbSave.textContent = 'SAVED';
-    sbSave.style.color = '#44aa44';
+    sbSave.style.color = '#008000';
   } catch (e) {
     sbSave.textContent = 'SAVE ERR';
-    sbSave.style.color = '#cc3333';
+    sbSave.style.color = '#ff0000';
     console.warn('Failed to save:', e);
   }
 }
@@ -840,7 +798,7 @@ function loadState() {
       }
       state.dirty = false;
       sbSave.textContent = 'LOADED';
-      sbSave.style.color = '#44aa44';
+      sbSave.style.color = '#008000';
     }
   } catch (e) {
     console.warn('Failed to load:', e);
@@ -856,7 +814,7 @@ function exportJSON() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'mapcrafter-map.json';
+  a.download = 'chiral_hammer-map.json';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -870,9 +828,7 @@ function importJSON(file) {
         alert('Invalid map file: missing cells array.');
         return;
       }
-      // Clear current
       clearAllCells();
-      // Load new
       for (const cell of data.cells) {
         const [gx, gz] = cell.key.split(',').map(Number);
         setCell(gx, gz, cell.color);
@@ -895,14 +851,12 @@ function animate() {
   requestAnimationFrame(animate);
 
   const delta = clock.getDelta();
-  // Clamp delta to avoid huge jumps (e.g. tab switch)
   const dt = Math.min(delta, 0.1);
 
   update3DCamera(dt);
 
   renderer.render(scene, activeCamera);
 
-  // Update cursor coords in 3D mode (every frame due to constant movement)
   if (state.mode === '3d') {
     sbCursor.textContent =
       `${state.camPos.x.toFixed(1)}, ${state.camPos.y.toFixed(1)}, ${state.camPos.z.toFixed(1)}`;
@@ -912,7 +866,6 @@ function animate() {
 // ===== INIT =====
 
 function init() {
-  // Event listeners
   renderer.domElement.addEventListener('mousedown', onMouseDown);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
@@ -922,7 +875,6 @@ function init() {
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('resize', onResize);
 
-  // Buttons
   document.getElementById('btn-export').addEventListener('click', exportJSON);
   document.getElementById('btn-import-file').addEventListener('click', () => importInput.click());
   document.getElementById('btn-clear').addEventListener('click', () => {
@@ -946,13 +898,12 @@ function init() {
 
   renderer.domElement.focus();
 
-  // Start loop
   animate();
 }
 
 // ===== EXPOSE FOR CONSOLE HACKING =====
 
-window.MAPCRAFTER = {
+window.CHIRAL_HAMMER = {
   state,
   scene,
   renderer,

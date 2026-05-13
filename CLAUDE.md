@@ -16,6 +16,7 @@ Don't break these without checking first:
 - **Vanilla JS.** No React, Vue, or any framework.
 - **`localStorage` for persistence**, JSON for export/import.
 - **Readable code over clever code.** No minification, no one-liners flexing. Comments explain *why*, not *what*. Big banner comments separate major systems.
+- **90s HTML aesthetic.** System fonts, beveled borders, Windows 9x gray, web-safe colors. No rounded corners, shadows, gradients, or rgba transparency. The tool looks like it belongs in 1998 — same era as the PS1 maps it builds.
 - **Hackable.** Someone with intermediate JS should be able to open the file, find the relevant section, and modify it without setup.
 
 ## Code conventions
@@ -24,19 +25,19 @@ Don't break these without checking first:
 - Banner comments (`// ===== SECTION =====`) separate major systems: setup, state, rendering, 2D input, 3D input, UI, persistence, main loop.
 - Module-level scratch Three.js objects prefixed with `_` (e.g. `_m4`, `_ndc`, `_hit`) — reused to avoid GC pressure in the render loop.
 - Functions short and named for what they do.
-- Internals exposed via `window.MAPCRAFTER` for console hacking.
+- Internals exposed via `window.CHIRAL_HAMMER` for console hacking.
 
 ## File layout
 
 ```
-mapcrafter.html  — the entire editor (HTML + CSS + JS in one file)
+chiral_hammer.html  — the entire editor (HTML + CSS + JS in one file)
 DESIGN.md        — vision, geometry paradigm, roadmap
 CLAUDE.md        — this file
 ```
 
 ## How to run / test
 
-Open `mapcrafter.html` directly in a modern browser. No server needed. State persists to `localStorage` under key `mapcrafter:v0`. To wipe state during development: clear that key in DevTools, or hit the CLEAR button in the UI.
+Open `chiral_hammer.html` directly in a modern browser. No server needed. State persists to `localStorage` under key `chiral_hammer:v0`. To wipe state during development: clear that key in DevTools, or hit the CLEAR button in the UI.
 
 ## What's done (v0)
 

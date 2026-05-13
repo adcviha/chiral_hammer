@@ -109,11 +109,11 @@ Modes:
 
 ## UI principles
 
-- Dark dev-tool aesthetic. Monospace typography. Sharp amber + cyan accents.
-- Status bar always visible — mode, cell count, cursor coords, save state.
-- Help overlay top-left always shows current-mode controls.
+- 90s HTML aesthetic. System fonts (MS Sans Serif). Classic Windows 9x gray (#c0c0c0). Beveled `outset`/`inset` borders. Navy (#000080) title bars. Yellow tooltip help. Web-safe colors. No rounded corners, no shadows, no gradients, no transparency effects.
+- Status bar always visible — mode, cell count, cursor coords, save state. Classic Windows sunken-panel style.
+- Help overlay top-left always shows current-mode controls. Classic tooltip style (yellow bg, black border).
 - Single-key toggles for things you do constantly (`Tab` for mode, `T` for treasure box).
-- Panels slide from the edge rather than float; they don't eat the canvas when closed.
+- Panels appear/disappear instantly (no transitions) — they don't eat the canvas when closed.
 
 ## Roadmap
 
