@@ -56,23 +56,25 @@ body {
 
 /* ===== TEXTURE PANEL — bottom-left ===== */
 #texture-panel {
-  position: fixed; bottom: 22px; left: 0;
+  position: fixed; bottom: 22px; left: 0; right: 50%;
   z-index: 20;
-  width: 50%; height: 180px;
+  height: 180px;
   background: #c0c0c0;
   border-top: 2px outset #ffffff;
   border-right: 2px outset #ffffff;
   display: none;
 }
 #texture-panel.open { display: block; }
+#texture-panel.maximized { right: 0; z-index: 21; }
 #texture-panel .tp-header {
   background: #000080;
   color: #ffffff;
   font-weight: bold;
   font-size: 11px;
   padding: 2px 4px;
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: 4px;
 }
+#texture-panel .tp-header span { flex: 1; }
 #texture-panel .tp-body {
   padding: 8px;
   font-size: 11px;
@@ -83,23 +85,25 @@ body {
 
 /* ===== TREASURE BOX — bottom-right ===== */
 #treasure-box {
-  position: fixed; bottom: 22px; right: 0;
+  position: fixed; bottom: 22px; left: 50%; right: 0;
   z-index: 20;
-  width: 50%; height: 180px;
+  height: 180px;
   background: #c0c0c0;
   border-top: 2px outset #ffffff;
   border-left: 2px outset #ffffff;
   display: none;
 }
 #treasure-box.open { display: block; }
+#treasure-box.maximized { left: 0; z-index: 21; }
 #treasure-box .tb-header {
-  background: #000080;
+  background: #008080;
   color: #ffffff;
   font-weight: bold;
   font-size: 11px;
   padding: 2px 4px;
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; gap: 4px;
 }
+#treasure-box .tb-header span { flex: 1; }
 #treasure-box .tb-body {
   padding: 8px;
   font-size: 11px;
@@ -107,6 +111,20 @@ body {
   overflow-y: auto;
   height: calc(100% - 20px);
 }
+
+/* ===== PANEL BUTTONS ===== */
+.panel-btn {
+  font-family: inherit;
+  font-size: 10px;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 0px 6px;
+  cursor: pointer;
+  color: #000000;
+  min-width: 20px;
+  text-align: center;
+}
+.panel-btn:active { border-style: inset; }
 
 /* ===== STATUS BAR — classic Windows 9x ===== */
 #status-bar {
@@ -196,6 +214,7 @@ body {
 <div id="texture-panel">
   <div class="tp-header">
     <span>TEXTURE LIBRARY</span>
+    <button class="panel-btn" id="btn-tp-max" title="Maximize">&#x25A1;</button>
     <span style="font-size:10px">[T]</span>
   </div>
   <div class="tp-body">
@@ -207,6 +226,7 @@ body {
 <div id="treasure-box">
   <div class="tb-header">
     <span>TREASURE BOX</span>
+    <button class="panel-btn" id="btn-tb-max" title="Maximize">&#x25A1;</button>
     <span style="font-size:10px">[B]</span>
   </div>
   <div class="tb-body">
@@ -260,6 +280,8 @@ const state = {
   activeColor: '#8b7355',
   tbOpen: false,
   tpOpen: false,
+  tpMaximized: false,
+  tbMaximized: false,
   camera2D: null,
   camera3D: null,
 
@@ -462,7 +484,7 @@ function addCellMesh(gx, gz, color) {
 
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(_cellGeo, mat);
-  mesh.position.set(gx, 0.002, gz);
+  mesh.position.set(gx + 0.5, 0.002, gz + 0.5);
   mesh.name = `cell-${key}`;
 
   cellGroup.add(mesh);
@@ -506,8 +528,8 @@ function getGridFromMouse(event) {
 
   target.copy(rayOrigin).addScaledVector(rayDir, t);
 
-  const gx = Math.round(target.x);
-  const gz = Math.round(target.z);
+  const gx = Math.floor(target.x);
+  const gz = Math.floor(target.z);
   return { gx, gz, worldX: target.x, worldZ: target.z };
 }
 
@@ -539,7 +561,7 @@ function updateHighlight(event) {
     highlightQuad.visible = false;
     return;
   }
-  highlightQuad.position.set(grid.gx, 0.01, grid.gz);
+  highlightQuad.position.set(grid.gx + 0.5, 0.01, grid.gz + 0.5);
   highlightQuad.visible = true;
 
   sbCursor.textContent = `${grid.gx}, ${grid.gz}`;
@@ -557,7 +579,9 @@ function updateSelRect() {
   const w = x2 - x1 + 1;
   const h = z2 - z1 + 1;
   selRect.scale.set(w, 1, h);
-  selRect.position.set(x1 + w / 2 - 0.5, 0.02, z1 + h / 2 - 0.5);
+  selRect.position.set(x1 + w / 2, 0.02, z1 + h / 2);
+  selOutline.scale.set(w, 1, h);
+  selOutline.position.set(x1 + w / 2, 0.021, z1 + h / 2);
 }
 
 function commitSelection() {
@@ -641,7 +665,7 @@ function update3DCamera(deltaSec) {
 
   const speed = state.keys['ShiftLeft'] || state.keys['ShiftRight'] ? 15 : 5;
   const moveSpeed = speed * deltaSec;
-  const lookSensitivity = 0.8;
+  const lookSensitivity = 0.25;
 
   // Accumulate mouse delta into target yaw/pitch while right mouse is held
   if (state.rightDown) {
@@ -652,7 +676,7 @@ function update3DCamera(deltaSec) {
   }
 
   // Smooth lerp camera toward target
-  const lerpRate = 8;
+  const lerpRate = 5;
   const t = 1 - Math.exp(-lerpRate * deltaSec);
   state.camYaw += (state.targetYaw - state.camYaw) * t;
   state.camPitch += (state.targetPitch - state.camPitch) * t;
@@ -719,9 +743,11 @@ function setMode(mode) {
     const bounds = getCellBounds();
     if (bounds) {
       const dist = Math.max(bounds.span * 1.2, 6);
-      state.camPos.set(bounds.cx + dist, dist * 0.6, bounds.cz + dist);
-      state.camYaw = -Math.PI / 4;
-      state.camPitch = -0.4;
+      const h = dist * 0.6;
+      state.camPos.set(bounds.cx + dist, h, bounds.cz + dist);
+      const dir = new THREE.Vector3(bounds.cx, 0, bounds.cz).sub(state.camPos).normalize();
+      state.camYaw = Math.atan2(dir.x, dir.z);
+      state.camPitch = Math.asin(dir.y);
       state.targetYaw = state.camYaw;
       state.targetPitch = state.camPitch;
     }
@@ -784,19 +810,12 @@ function onMouseDown(event) {
 
   if (state.mode === '2d') {
     if (event.button === 0) {
+      // LMB = paint (drag to fill)
       state.mouseDown = true;
       state.mouseButton = 0;
-      if (state.keys['ShiftLeft'] || state.keys['ShiftRight']) {
-        const grid = getGridFromMouse(event);
-        if (grid) {
-          state.selecting = true;
-          state.selectStart.set(grid.gx, grid.gz);
-          state.selectEnd.set(grid.gx, grid.gz);
-          selRect.visible = true; selOutline.visible = true;
-        } else {
-          clearSelection();
-        }
-      } else if (!state.keys['Space']) {
+      if (state.keys['Space']) {
+        // Space+LMB = pan, handled in mousemove
+      } else {
         const grid = getGridFromMouse(event);
         if (!grid && state.selectedCells.size > 0) {
           clearSelection();
@@ -804,10 +823,20 @@ function onMouseDown(event) {
         paintAtMouse(event);
       }
     } else if (event.button === 2) {
+      // RMB = selection rubber-band
       state.mouseDown = true;
       state.mouseButton = 2;
-      paintAtMouse(event);
+      const grid = getGridFromMouse(event);
+      if (grid) {
+        state.selecting = true;
+        state.selectStart.set(grid.gx, grid.gz);
+        state.selectEnd.set(grid.gx, grid.gz);
+        selRect.visible = true; selOutline.visible = true;
+      } else {
+        clearSelection();
+      }
     } else if (event.button === 1) {
+      // MMB = pan
       state.middleDown = true;
       event.preventDefault();
     }
@@ -854,7 +883,7 @@ function onMouseMove(event) {
       return;
     }
 
-    if (state.mouseDown && (event.buttons & 1 || event.buttons & 2)) {
+    if (state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
       paintAtMouse(event);
     }
   }
@@ -993,9 +1022,8 @@ function updateHelp() {
   if (state.mode === '2d') {
     helpMode.textContent = '2D PAINT';
     helpKeys.innerHTML = `
-      <span class="key">LMB</span> <span class="dim">paint cell</span><br>
-      <span class="key">RMB</span> <span class="dim">erase cell</span><br>
-      <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
+      <span class="key">LMB drag</span> <span class="dim">paint cells</span><br>
+      <span class="key">RMB drag</span> <span class="dim">select cells</span><br>
       <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
@@ -1017,7 +1045,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.7';
+const STORAGE_KEY = 'chiral_hammer:v0.8';
 
 function markDirty() {
   state.dirty = true;
@@ -1032,7 +1060,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.7,
+    version: 0.8,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -1068,7 +1096,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.7,
+    version: 0.8,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1142,6 +1170,22 @@ function init() {
     if (state.grid.size === 0 || confirm('Clear all cells?')) {
       clearAllCells();
       updateStatusBar();
+    }
+  });
+  document.getElementById('btn-tp-max').addEventListener('click', () => {
+    state.tpMaximized = !state.tpMaximized;
+    if (state.tpMaximized) {
+      texturePanel.classList.add('maximized');
+    } else {
+      texturePanel.classList.remove('maximized');
+    }
+  });
+  document.getElementById('btn-tb-max').addEventListener('click', () => {
+    state.tbMaximized = !state.tbMaximized;
+    if (state.tbMaximized) {
+      treasureBox.classList.add('maximized');
+    } else {
+      treasureBox.classList.remove('maximized');
     }
   });
   importInput.addEventListener('change', (e) => {
