@@ -224,6 +224,12 @@ const state = {
   rightDown: false,
   keys: {},
 
+  // selection
+  selecting: false,
+  selectStart: new THREE.Vector2(),
+  selectEnd: new THREE.Vector2(),
+  selectedCells: new Set(),   // Set of "x,z" keys
+
   // save flag
   dirty: false,
   saveTimeout: null,
@@ -309,6 +315,16 @@ highlightQuad.visible = true;
 highlightQuad.renderOrder = 999;
 highlightQuad.material.depthTest = false;
 scene.add(highlightQuad);
+
+// Selection rubber-band rectangle (2D mode, Shift+drag)
+const selRectGeo = new THREE.PlaneGeometry(1, 1);
+const selRectMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthTest: false });
+const selRect = new THREE.Mesh(selRectGeo, selRectMat);
+selRect.rotation.x = -Math.PI / 2;
+selRect.position.y = 0.02;
+selRect.visible = false;
+selRect.renderOrder = 998;
+scene.add(selRect);
 
 // ===== SCRATCH OBJECTS (reused to avoid GC) =====
 
@@ -462,6 +478,63 @@ function updateHighlight(event) {
   state.mouseWorld2D.set(grid.worldX, 0, grid.worldZ);
 }
 
+// ===== SELECTION =====
+
+function updateSelRect() {
+  const x1 = Math.min(state.selectStart.x, state.selectEnd.x);
+  const x2 = Math.max(state.selectStart.x, state.selectEnd.x);
+  const z1 = Math.min(state.selectStart.y, state.selectEnd.y);
+  const z2 = Math.max(state.selectStart.y, state.selectEnd.y);
+
+  const w = x2 - x1 + 1;
+  const h = z2 - z1 + 1;
+  selRect.scale.set(w, 1, h);
+  selRect.position.set(x1 + w / 2 - 0.5, 0.02, z1 + h / 2 - 0.5);
+}
+
+function commitSelection() {
+  const x1 = Math.min(state.selectStart.x, state.selectEnd.x);
+  const x2 = Math.max(state.selectStart.x, state.selectEnd.x);
+  const z1 = Math.min(state.selectStart.y, state.selectEnd.y);
+  const z2 = Math.max(state.selectStart.y, state.selectEnd.y);
+
+  // Deselect previous
+  for (const key of state.selectedCells) {
+    updateCellSelectionVisual(key, false);
+  }
+  state.selectedCells.clear();
+
+  // Select cells within the rectangle
+  for (let gx = x1; gx <= x2; gx++) {
+    for (let gz = z1; gz <= z2; gz++) {
+      const key = gridKey(gx, gz);
+      if (state.grid.has(key)) {
+        state.selectedCells.add(key);
+        updateCellSelectionVisual(key, true);
+      }
+    }
+  }
+}
+
+function clearSelection() {
+  for (const key of state.selectedCells) {
+    updateCellSelectionVisual(key, false);
+  }
+  state.selectedCells.clear();
+}
+
+function updateCellSelectionVisual(key, selected) {
+  const mesh = cellMeshes.get(key);
+  if (!mesh) return;
+  if (selected) {
+    mesh.material.emissive = new THREE.Color(0x444400);
+    mesh.material.emissiveIntensity = 0.6;
+  } else {
+    mesh.material.emissive = new THREE.Color(0x000000);
+    mesh.material.emissiveIntensity = 0;
+  }
+}
+
 // ===== 3D INPUT =====
 
 function update3DCamera(deltaSec) {
@@ -584,7 +657,23 @@ function onMouseDown(event) {
     if (event.button === 0) {
       state.mouseDown = true;
       state.mouseButton = 0;
-      paintAtMouse(event);
+      if (state.keys['ShiftLeft'] || state.keys['ShiftRight']) {
+        const grid = getGridFromMouse(event);
+        if (grid) {
+          state.selecting = true;
+          state.selectStart.set(grid.gx, grid.gz);
+          state.selectEnd.set(grid.gx, grid.gz);
+          selRect.visible = true;
+        } else {
+          clearSelection();
+        }
+      } else if (!state.keys['Space']) {
+        const grid = getGridFromMouse(event);
+        if (!grid && state.selectedCells.size > 0) {
+          clearSelection();
+        }
+        paintAtMouse(event);
+      }
     } else if (event.button === 2) {
       state.mouseDown = true;
       state.mouseButton = 2;
@@ -617,6 +706,15 @@ function onMouseMove(event) {
   if (state.mode === '2d') {
     updateHighlight(event);
 
+    if (state.selecting) {
+      const grid = getGridFromMouse(event);
+      if (grid) {
+        state.selectEnd.set(grid.gx, grid.gz);
+        updateSelRect();
+      }
+      return;
+    }
+
     if (state.middleDown || (state.keys['Space'] && state.mouseDown)) {
       pan2D(event.movementX, event.movementY);
       return;
@@ -629,6 +727,12 @@ function onMouseMove(event) {
 }
 
 function onMouseUp(event) {
+  if (state.selecting) {
+    commitSelection();
+    state.selecting = false;
+    selRect.visible = false;
+  }
+
   state.mouseDown = false;
   state.mouseButton = -1;
   state.middleDown = false;
@@ -728,6 +832,7 @@ function updateHelp() {
     helpKeys.innerHTML = `
       <span class="key">LMB</span> <span class="dim">paint cell</span><br>
       <span class="key">RMB</span> <span class="dim">erase cell</span><br>
+      <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
       <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
@@ -749,7 +854,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.4';
+const STORAGE_KEY = 'chiral_hammer:v0.5';
 
 function markDirty() {
   state.dirty = true;
@@ -764,7 +869,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.4,
+    version: 0.5,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -800,7 +905,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.4,
+    version: 0.5,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -905,6 +1010,7 @@ window.CHIRAL_HAMMER = {
   setCell,
   removeCell,
   clearAllCells,
+  clearSelection,
   saveState,
   loadState,
   exportJSON,
