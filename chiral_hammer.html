@@ -65,16 +65,16 @@ body {
   display: none;
 }
 #texture-panel.open { display: block; }
-#texture-panel.maximized { right: 0; z-index: 21; }
+#texture-panel.maximized { top: 0; bottom: 22px; right: 0; height: auto; z-index: 25; }
 #texture-panel .tp-header {
   background: #000080;
   color: #ffffff;
   font-weight: bold;
   font-size: 11px;
   padding: 2px 4px;
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: center; gap: 2px;
 }
-#texture-panel .tp-header span { flex: 1; }
+#texture-panel .tp-header .tp-title { flex: 1; }
 #texture-panel .tp-body {
   padding: 8px;
   font-size: 11px;
@@ -94,16 +94,16 @@ body {
   display: none;
 }
 #treasure-box.open { display: block; }
-#treasure-box.maximized { left: 0; z-index: 21; }
+#treasure-box.maximized { top: 0; bottom: 22px; left: 0; height: auto; z-index: 25; }
 #treasure-box .tb-header {
   background: #008080;
   color: #ffffff;
   font-weight: bold;
   font-size: 11px;
   padding: 2px 4px;
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: center; gap: 2px;
 }
-#treasure-box .tb-header span { flex: 1; }
+#treasure-box .tb-header .tb-title { flex: 1; }
 #treasure-box .tb-body {
   padding: 8px;
   font-size: 11px;
@@ -213,9 +213,9 @@ body {
 <!-- TEXTURE PANEL -->
 <div id="texture-panel">
   <div class="tp-header">
-    <span>TEXTURE LIBRARY</span>
+    <span class="tp-title">TEXTURE LIBRARY</span>
     <button class="panel-btn" id="btn-tp-max" title="Maximize">&#x25A1;</button>
-    <span style="font-size:10px">[T]</span>
+    <button class="panel-btn" id="btn-tp-min" title="Minimize">&#x2014;</button>
   </div>
   <div class="tp-body">
     No textures imported yet.<br>Paste (Ctrl+V) or drop an image to get started.
@@ -225,9 +225,9 @@ body {
 <!-- TREASURE BOX -->
 <div id="treasure-box">
   <div class="tb-header">
-    <span>TREASURE BOX</span>
+    <span class="tb-title">TREASURE BOX</span>
     <button class="panel-btn" id="btn-tb-max" title="Maximize">&#x25A1;</button>
-    <span style="font-size:10px">[B]</span>
+    <button class="panel-btn" id="btn-tb-min" title="Minimize">&#x2014;</button>
   </div>
   <div class="tb-body">
     No prefabs yet.<br>Select geometry and save to get started.
@@ -296,9 +296,10 @@ const state = {
   mouse: new THREE.Vector2(),
   mouseWorld2D: new THREE.Vector3(),
   mouseDown: false,
-  mouseButton: -1,   // 0=paint, 2=erase
+  mouseButton: -1,
   middleDown: false,
   rightDown: false,
+  dragFill: true,
   keys: {},
 
   // selection
@@ -578,9 +579,9 @@ function updateSelRect() {
 
   const w = x2 - x1 + 1;
   const h = z2 - z1 + 1;
-  selRect.scale.set(w, 1, h);
+  selRect.scale.set(w, h, 1);
   selRect.position.set(x1 + w / 2, 0.02, z1 + h / 2);
-  selOutline.scale.set(w, 1, h);
+  selOutline.scale.set(w, h, 1);
   selOutline.position.set(x1 + w / 2, 0.021, z1 + h / 2);
 }
 
@@ -780,9 +781,9 @@ function update2DCameraAspect() {
 
 function pan2D(dx, dy) {
   if (state.mode !== '2d') return;
-  const zoom = state.camera2D.zoom;
-  state.camera2D.position.x -= dx / zoom;
-  state.camera2D.position.z -= dy / zoom;
+  const s = frustumSize / (state.camera2D.zoom * window.innerHeight);
+  state.camera2D.position.x -= dx * s;
+  state.camera2D.position.z -= dy * s;
 }
 
 function zoom2D(delta, cursorX, cursorY) {
@@ -836,8 +837,10 @@ function onMouseDown(event) {
         clearSelection();
       }
     } else if (event.button === 1) {
-      // MMB = pan
+      // MMB = pan or toggle drag-fill
       state.middleDown = true;
+      state._mmStartX = event.clientX;
+      state._mmStartY = event.clientY;
       event.preventDefault();
     }
   }
@@ -883,7 +886,7 @@ function onMouseMove(event) {
       return;
     }
 
-    if (state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
+    if (state.dragFill && state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
       paintAtMouse(event);
     }
   }
@@ -913,6 +916,16 @@ function onMouseUp(event) {
     state.selecting = false;
   }
 
+  // MMB click (not drag) toggles drag-fill mode
+  if (event.button === 1 && state.middleDown) {
+    const dx = event.clientX - state._mmStartX;
+    const dy = event.clientY - state._mmStartY;
+    if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
+      state.dragFill = !state.dragFill;
+      updateStatusBar();
+    }
+  }
+
   state.mouseDown = false;
   state.mouseButton = -1;
   state.middleDown = false;
@@ -926,6 +939,15 @@ function onMouseUp(event) {
 function onWheel(event) {
   if (state.mode === '2d') {
     zoom2D(event.deltaY, event.clientX, event.clientY);
+  } else if (state.mode === '3d') {
+    const fwd = new THREE.Vector3(
+      Math.sin(state.camYaw) * Math.cos(state.camPitch),
+      Math.sin(state.camPitch),
+      Math.cos(state.camYaw) * Math.cos(state.camPitch)
+    ).normalize();
+    const dolly = event.deltaY * 0.05;
+    state.camPos.addScaledVector(fwd, dolly);
+    state.camPos.y = Math.max(0.5, state.camPos.y);
   }
 }
 
@@ -1012,7 +1034,11 @@ function toggleTreasureBox() {
 // ===== STATUS BAR =====
 
 function updateStatusBar() {
-  sbMode.textContent = state.mode === '2d' ? '2D PAINT' : '3D FLY';
+  if (state.mode === '2d') {
+    sbMode.textContent = state.dragFill ? '2D FILL' : '2D CLICK';
+  } else {
+    sbMode.textContent = '3D FLY';
+  }
   sbCells.textContent = state.grid.size;
 }
 
@@ -1024,6 +1050,7 @@ function updateHelp() {
     helpKeys.innerHTML = `
       <span class="key">LMB drag</span> <span class="dim">paint cells</span><br>
       <span class="key">RMB drag</span> <span class="dim">select cells</span><br>
+      <span class="key">MMB click</span> <span class="dim">toggle fill</span><br>
       <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
@@ -1045,7 +1072,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.8';
+const STORAGE_KEY = 'chiral_hammer:v0.9';
 
 function markDirty() {
   state.dirty = true;
@@ -1060,7 +1087,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.8,
+    version: 0.9,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -1096,7 +1123,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.8,
+    version: 0.9,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1180,6 +1207,11 @@ function init() {
       texturePanel.classList.remove('maximized');
     }
   });
+  document.getElementById('btn-tp-min').addEventListener('click', () => {
+    state.tpOpen = false;
+    texturePanel.classList.remove('open', 'maximized');
+    state.tpMaximized = false;
+  });
   document.getElementById('btn-tb-max').addEventListener('click', () => {
     state.tbMaximized = !state.tbMaximized;
     if (state.tbMaximized) {
@@ -1187,6 +1219,11 @@ function init() {
     } else {
       treasureBox.classList.remove('maximized');
     }
+  });
+  document.getElementById('btn-tb-min').addEventListener('click', () => {
+    state.tbOpen = false;
+    treasureBox.classList.remove('open', 'maximized');
+    state.tbMaximized = false;
   });
   importInput.addEventListener('change', (e) => {
     if (e.target.files[0]) {
