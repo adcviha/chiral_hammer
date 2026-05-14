@@ -11,7 +11,7 @@
 * { margin: 0; padding: 0; }
 
 body {
-  background: #3a5a8a;
+  background: #4a6a7a;
   font-family: "MS Sans Serif", "Microsoft Sans Serif", Geneva, sans-serif;
   font-size: 11px;
   overflow: hidden;
@@ -186,7 +186,7 @@ body {
 }
 </style>
 </head>
-<body bgcolor="#3a5a8a" text="#000000">
+<body bgcolor="#4a6a7a" text="#000000">
 
 <div id="canvas-container"></div>
 
@@ -311,6 +311,7 @@ const state = {
 
   // display
   wireframe: false,
+  fillMode: false,
 
   // save flag
   dirty: false,
@@ -339,8 +340,8 @@ const scene = new THREE.Scene();
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x3a5a8a);
-scene.fog = new THREE.Fog(0x3a5a8a, 30, 80);
+renderer.setClearColor(0x4a6a7a);
+scene.fog = new THREE.Fog(0x4a6a7a, 30, 80);
 container.appendChild(renderer.domElement);
 
 // 2D orthographic camera
@@ -370,20 +371,11 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 2);
 dirLight.position.set(10, 20, 5);
 scene.add(dirLight);
 
-// Ground / grid plane
+// Grid lines
 const gridSize = 50;
 const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x404040, 0x202020);
 gridHelper.position.y = 0.001;
 scene.add(gridHelper);
-
-// Dark ground plane
-const groundGeo = new THREE.PlaneGeometry(gridSize, gridSize);
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1, side: THREE.DoubleSide });
-const groundPlane = new THREE.Mesh(groundGeo, groundMat);
-groundPlane.rotation.x = -Math.PI / 2;
-groundPlane.position.y = -0.01;
-groundPlane.name = 'ground';
-scene.add(groundPlane);
 
 // Group for cell meshes
 const cellGroup = new THREE.Group();
@@ -605,6 +597,25 @@ function fillRect(worldA, worldB) {
   updateStatusBar();
 }
 
+function eraseRect(worldA, worldB) {
+  const x1 = Math.min(worldA.x, worldB.x);
+  const x2 = Math.max(worldA.x, worldB.x);
+  const z1 = Math.min(worldA.z, worldB.z);
+  const z2 = Math.max(worldA.z, worldB.z);
+  const gx1 = Math.floor(x1);
+  const gx2 = Math.floor(x2 - 0.001);
+  const gz1 = Math.floor(z1);
+  const gz2 = Math.floor(z2 - 0.001);
+  for (let gx = gx1; gx <= gx2; gx++) {
+    for (let gz = gz1; gz <= gz2; gz++) {
+      if (cellExists(gx, gz)) {
+        removeCell(gx, gz);
+      }
+    }
+  }
+  updateStatusBar();
+}
+
 // ===== SELECTION =====
 
 function updateSelRect() {
@@ -687,6 +698,15 @@ function clearSelection() {
   state.selectedCells.clear();
 }
 
+function deleteSelectedCells() {
+  for (const key of state.selectedCells) {
+    const [gx, gz] = key.split(',').map(Number);
+    removeCell(gx, gz);
+  }
+  state.selectedCells.clear();
+  updateStatusBar();
+}
+
 function updateCellSelectionVisual(key, selected) {
   const mesh = cellMeshes.get(key);
   if (!mesh) return;
@@ -736,17 +756,17 @@ function update3DCamera(deltaSec) {
 
   if (state.keys['KeyW']) state.camPos.addScaledVector(forward, moveSpeed);
   if (state.keys['KeyS']) state.camPos.addScaledVector(forward, -moveSpeed);
-  if (state.keys['KeyA']) state.camPos.addScaledVector(right, moveSpeed);
-  if (state.keys['KeyD']) state.camPos.addScaledVector(right, -moveSpeed);
+  if (state.keys['KeyA']) state.camPos.addScaledVector(right, -moveSpeed);
+  if (state.keys['KeyD']) state.camPos.addScaledVector(right, moveSpeed);
   if (state.keys['KeyQ']) state.camPos.y -= moveSpeed;
   if (state.keys['KeyE']) state.camPos.y += moveSpeed;
 
   // Arrow keys = look (twin-stick)
   const arrowLook = 2 * deltaSec;
-  if (state.keys['ArrowLeft'])  state.targetYaw -= arrowLook;
-  if (state.keys['ArrowRight']) state.targetYaw += arrowLook;
-  if (state.keys['ArrowUp'])    state.targetPitch -= arrowLook;
-  if (state.keys['ArrowDown'])  state.targetPitch += arrowLook;
+  if (state.keys['ArrowLeft'])  state.targetYaw += arrowLook;
+  if (state.keys['ArrowRight']) state.targetYaw -= arrowLook;
+  if (state.keys['ArrowUp'])    state.targetPitch += arrowLook;
+  if (state.keys['ArrowDown'])  state.targetPitch -= arrowLook;
   state.targetPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.targetPitch));
 
   const lookTarget = new THREE.Vector3(
@@ -872,15 +892,21 @@ function onMouseDown(event) {
         }
       } else if (state.keys['Space']) {
         // Space+LMB = pan
-      } else {
-        // LMB = paint — record fill start for drag-fill rectangle
+      } else if (state.fillMode) {
+        // Fill mode: drag-fill rectangle
         state._fillStart = getWorldFromMouse(event);
+        paintAtMouse(event);
+      } else {
+        // Single cell paint
         paintAtMouse(event);
       }
     } else if (event.button === 2) {
       // RMB = erase
       state.mouseDown = true;
       state.mouseButton = 2;
+      if (state.fillMode) {
+        state._fillStart = getWorldFromMouse(event);
+      }
       const grid = getGridFromMouse(event);
       if (grid && cellExists(grid.gx, grid.gz)) {
         removeCell(grid.gx, grid.gz);
@@ -936,7 +962,6 @@ function onMouseMove(event) {
 
     if (state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
       if (state._fillStart) {
-        // Drag-fill: paint all cells in rectangle from fillStart to current
         const world = getWorldFromMouse(event);
         if (world) {
           fillRect(state._fillStart, world);
@@ -946,10 +971,17 @@ function onMouseMove(event) {
       }
     }
     if (state.mouseDown && state.mouseButton === 2 && (event.buttons & 2)) {
-      const grid = getGridFromMouse(event);
-      if (grid && cellExists(grid.gx, grid.gz)) {
-        removeCell(grid.gx, grid.gz);
-        updateStatusBar();
+      if (state._fillStart) {
+        const world = getWorldFromMouse(event);
+        if (world) {
+          eraseRect(state._fillStart, world);
+        }
+      } else {
+        const grid = getGridFromMouse(event);
+        if (grid && cellExists(grid.gx, grid.gz)) {
+          removeCell(grid.gx, grid.gz);
+          updateStatusBar();
+        }
       }
     }
   }
@@ -1033,7 +1065,18 @@ function onKeyDown(event) {
   }
 
   if (event.code === 'KeyF') {
+    toggleFillMode();
+    return;
+  }
+
+  if (event.code === 'KeyG') {
     toggleWireframe();
+    return;
+  }
+
+  if (event.code === 'Backspace' || event.code === 'Delete') {
+    event.preventDefault();
+    deleteSelectedCells();
     return;
   }
 
@@ -1090,6 +1133,12 @@ function toggleTexturePanel() {
   }
 }
 
+function toggleFillMode() {
+  state.fillMode = !state.fillMode;
+  updateHelp();
+  updateStatusBar();
+}
+
 function toggleWireframe() {
   state.wireframe = !state.wireframe;
   for (const mesh of cellMeshes.values()) {
@@ -1109,7 +1158,11 @@ function toggleTreasureBox() {
 // ===== STATUS BAR =====
 
 function updateStatusBar() {
-  sbMode.textContent = state.mode === '2d' ? '2D PAINT' : '3D FLY';
+  if (state.mode === '2d') {
+    sbMode.textContent = state.fillMode ? '2D FILL' : '2D PAINT';
+  } else {
+    sbMode.textContent = '3D FLY';
+  }
   sbCells.textContent = state.grid.size;
 }
 
@@ -1118,14 +1171,17 @@ function updateStatusBar() {
 function updateHelp() {
   if (state.mode === '2d') {
     helpMode.textContent = '2D PAINT';
+    const fillLabel = state.fillMode ? 'FILL [ON]' : 'FILL [OFF]';
     helpKeys.innerHTML = `
-      <span class="key">LMB drag</span> <span class="dim">paint fill</span><br>
-      <span class="key">RMB</span> <span class="dim">erase cell</span><br>
+      <span class="key">LMB</span> <span class="dim">${state.fillMode ? 'drag fill rect' : 'paint cell'}</span><br>
+      <span class="key">RMB</span> <span class="dim">${state.fillMode ? 'drag erase rect' : 'erase cell'}</span><br>
       <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
       <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
       <span class="key">MMB drag</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
-      <span class="key">F</span> <span class="dim">wireframe</span><br>
+      <span class="key">F</span> <span class="dim">${fillLabel}</span><br>
+      <span class="key">G</span> <span class="dim">wireframe</span><br>
+      <span class="key">Del</span> <span class="dim">delete selected</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
       <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
@@ -1139,7 +1195,8 @@ function updateHelp() {
       <span class="key">RMB hold</span> <span class="dim">mouse look</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom to cursor</span><br>
       <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
-      <span class="key">F</span> <span class="dim">wireframe</span><br>
+      <span class="key">G</span> <span class="dim">wireframe</span><br>
+      <span class="key">Del</span> <span class="dim">delete selected</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 2D</span><br>
       <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
@@ -1335,6 +1392,8 @@ window.CHIRAL_HAMMER = {
   toggleTexturePanel,
   toggleTreasureBox,
   toggleWireframe,
+  toggleFillMode,
+  deleteSelectedCells,
   saveState,
   loadState,
   exportJSON,
