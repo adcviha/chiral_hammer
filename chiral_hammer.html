@@ -318,6 +318,7 @@ const state = {
   // display
   wireframe: false,
   fillMode: false,
+  wallMode: false,
 
   // save flag
   dirty: false,
@@ -404,7 +405,7 @@ const wall2DGroup = new THREE.Group();
 wall2DGroup.name = 'walls2d';
 wall2DGroup.renderOrder = 997;
 scene.add(wall2DGroup);
-const _wall2DGeo = new THREE.PlaneGeometry(1, 0.06);
+const _wall2DGeo = new THREE.PlaneGeometry(1, 0.14);
 const wall2DMeshes = new Map();  // canonical key -> indicator Mesh
 
 // Highlight quad under cursor in 2D mode
@@ -595,7 +596,7 @@ function addWallMesh(gx, gz, dir, color, height) {
     wall2DGroup.remove(wall2DMeshes.get(key));
     wall2DMeshes.get(key).material.dispose();
   }
-  const indMat = new THREE.MeshBasicMaterial({ color: 0xcc6600, side: THREE.DoubleSide, depthTest: false });
+  const indMat = new THREE.MeshBasicMaterial({ color: 0xff8800, side: THREE.DoubleSide, depthTest: false });
   const indMesh = new THREE.Mesh(_wall2DGeo, indMat);
   indMesh.rotation.x = -Math.PI / 2;
   indMesh.renderOrder = 997;
@@ -781,7 +782,7 @@ function updateHighlight(event) {
     edgeHighlight.visible = false;
     return;
   }
-  if (state.keys['AltLeft'] || state.keys['AltRight']) {
+  if (state.wallMode) {
     highlightQuad.visible = false;
     updateEdgeHighlight(event);
     return;
@@ -1055,9 +1056,11 @@ function setMode(mode) {
 
   if (mode === '2d') {
     highlightQuad.visible = true;
+    wall2DGroup.visible = true;
     sbCursor.textContent = '—';
   } else {
     highlightQuad.visible = false;
+    wall2DGroup.visible = false;
 
     const bounds = getCellBounds();
     if (bounds) {
@@ -1128,21 +1131,11 @@ function onMouseDown(event) {
   if (event.target !== renderer.domElement) return;
 
   if (state.mode === '2d') {
-    // Alt+click toggles wall on nearest edge
-    if ((state.keys['AltLeft'] || state.keys['AltRight']) && event.button === 0) {
-      const edge = getNearestEdge(event);
-      if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
-        toggleWall(edge.gx, edge.gz, edge.dir);
-        updateStatusBar();
-      }
-      return;
-    }
-
     if (event.button === 0) {
-      state.mouseDown = true;
-      state.mouseButton = 0;
       if (state.keys['ShiftLeft'] || state.keys['ShiftRight']) {
         // Shift+LMB = select (world-space rubber-band)
+        state.mouseDown = true;
+        state.mouseButton = 0;
         const world = getWorldFromMouse(event);
         if (world) {
           clearSelection();
@@ -1152,14 +1145,27 @@ function onMouseDown(event) {
           updateSelRect();
           selRect.visible = true; selOutline.visible = true;
         }
+      } else if (state.wallMode) {
+        // Wall mode: toggle wall on nearest edge
+        const edge = getNearestEdge(event);
+        if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
+          toggleWall(edge.gx, edge.gz, edge.dir);
+          updateStatusBar();
+        }
       } else if (state.keys['Space']) {
         // Space+LMB = pan
+        state.mouseDown = true;
+        state.mouseButton = 0;
       } else if (state.fillMode) {
         // Fill mode: drag-fill rectangle
+        state.mouseDown = true;
+        state.mouseButton = 0;
         state._fillStart = getWorldFromMouse(event);
         paintAtMouse(event);
       } else {
         // Single cell paint
+        state.mouseDown = true;
+        state.mouseButton = 0;
         paintAtMouse(event);
       }
     } else if (event.button === 2) {
@@ -1369,6 +1375,13 @@ function onKeyDown(event) {
     return;
   }
 
+  if (event.code === 'KeyW') {
+    if (state.mode === '2d') {
+      toggleWallMode();
+    }
+    return;
+  }
+
   if (event.code === 'KeyG') {
     toggleWireframe();
     return;
@@ -1439,6 +1452,12 @@ function toggleFillMode() {
   updateStatusBar();
 }
 
+function toggleWallMode() {
+  state.wallMode = !state.wallMode;
+  updateHelp();
+  updateStatusBar();
+}
+
 function toggleWireframe() {
   state.wireframe = !state.wireframe;
   for (const mesh of cellMeshes.values()) {
@@ -1462,7 +1481,9 @@ function toggleTreasureBox() {
 
 function updateStatusBar() {
   if (state.mode === '2d') {
-    sbMode.textContent = state.fillMode ? '2D FILL' : '2D PAINT';
+    if (state.wallMode) sbMode.textContent = '2D WALL';
+    else if (state.fillMode) sbMode.textContent = '2D FILL';
+    else sbMode.textContent = '2D PAINT';
   } else {
     sbMode.textContent = '3D FLY';
   }
@@ -1478,7 +1499,7 @@ function updateHelp() {
     helpKeys.innerHTML = `
       <span class="key">LMB</span> <span class="dim">${state.fillMode ? 'drag fill rect' : 'paint cell'}</span><br>
       <span class="key">RMB</span> <span class="dim">${state.fillMode ? 'drag erase rect' : 'erase cell'}</span><br>
-      <span class="key">Alt+LMB</span> <span class="dim">toggle wall on edge</span><br>
+      <span class="key">W</span> <span class="dim">${state.wallMode ? 'WALL [ON]' : 'WALL [OFF]'}</span><br>
       <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
       <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
       <span class="key">MMB drag</span> <span class="dim">pan</span><br>
@@ -1713,6 +1734,7 @@ window.CHIRAL_HAMMER = {
   toggleTreasureBox,
   toggleWireframe,
   toggleFillMode,
+  toggleWallMode,
   deleteSelectedCells,
   wallMeshes,
   wallGroup,
