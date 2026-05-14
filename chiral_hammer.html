@@ -239,7 +239,7 @@ body {
 <!-- HELP OVERLAY -->
 <div id="help-overlay">
   <div class="help-header">
-    <span class="mode-label" id="help-mode">2D PAINT</span>
+    <span class="mode-label" id="help-mode">2D TILE</span>
     <button class="help-minimize" id="btn-help-min" title="Minimize">–</button>
   </div>
   <div id="help-keys"></div>
@@ -257,7 +257,7 @@ body {
 
 <!-- TOOL PALETTE -->
 <div id="tool-palette">
-  <button class="tpl-btn active" data-tool="paint" title="Paint cells (1)">1 PAINT</button>
+  <button class="tpl-btn active" data-tool="tile" title="Tile cells (1)">1 TILE</button>
   <button class="tpl-btn" data-tool="fill" title="Fill rect (2)">2 FILL</button>
   <button class="tpl-btn" data-tool="wall" title="Place walls (3)">3 WALL</button>
   <button class="tpl-btn" data-tool="select" title="Select (4)">4 SELECT</button>
@@ -293,7 +293,7 @@ body {
 <div id="status-bar">
   <div class="sb-panel">
     <span class="sb-label">MODE:</span>
-    <span id="sb-mode">2D PAINT</span>
+    <span id="sb-mode">2D TILE</span>
   </div>
   <div class="sb-panel">
     <span class="sb-label">CELLS:</span>
@@ -372,7 +372,7 @@ const state = {
 
   // display / tool
   wireframe: false,
-  activeTool: 'paint',         // 'paint' | 'fill' | 'wall' | 'select' | 'house'
+  activeTool: 'tile',          // 'tile' | 'fill' | 'wall' | 'select' | 'house'
 
   // save flag
   dirty: false,
@@ -650,7 +650,7 @@ function addWallMesh(gx, gz, dir, color, height) {
     wall2DGroup.remove(wall2DMeshes.get(key));
     wall2DMeshes.get(key).material.dispose();
   }
-  const indMat = new THREE.MeshBasicMaterial({ color: 0xff8800, side: THREE.DoubleSide, depthTest: false });
+  const indMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, side: THREE.DoubleSide, depthTest: false });
   const indMesh = new THREE.Mesh(_wall2DGeo, indMat);
   indMesh.rotation.x = -Math.PI / 2;
   indMesh.renderOrder = 997;
@@ -828,7 +828,7 @@ function getGridFromMouse(event) {
   return { gx, gz, worldX: target.x, worldZ: target.z };
 }
 
-function paintAtMouse(event) {
+function tileAtMouse(event) {
   const grid = getGridFromMouse(event);
   if (!grid) return;
   if (state.mode !== '2d') return;
@@ -883,7 +883,8 @@ function fillRect(worldA, worldB) {
   const gz2 = Math.floor(z2 - 0.001);
   for (let gx = gx1; gx <= gx2; gx++) {
     for (let gz = gz1; gz <= gz2; gz++) {
-      if (!cellExists(gx, gz)) {
+      const existing = getCell(gx, gz);
+      if (!existing || existing.color !== state.activeColor) {
         setCell(gx, gz, state.activeColor);
       }
     }
@@ -932,34 +933,31 @@ function wallRect(worldA, worldB) {
   updateStatusBar();
 }
 
-// Compute orthogonal wall path: returns array of {gx, gz, dir}
-function computeOrthogonalWalls(worldA, worldB) {
+// Pen wall path: single grid line in the locked direction
+function computePenWalls(startGX, startGZ, dir, worldEnd) {
   const walls = [];
-  const gx1 = Math.floor(worldA.x);
-  const gz1 = Math.floor(worldA.z);
-  const gx2 = Math.floor(worldB.x);
-  const gz2 = Math.floor(worldB.z);
-
-  // Horizontal segment: N walls at z = gz1, from gx1 to gx2
-  if (gx2 !== gx1) {
-    const gxMin = Math.min(gx1, gx2);
-    const gxMax = Math.max(gx1, gx2);
+  if (dir === 'N') {
+    // Horizontal line at z = startGZ
+    const gxEnd = Math.floor(worldEnd.x);
+    const gxMin = Math.min(startGX, gxEnd);
+    const gxMax = Math.max(startGX, gxEnd);
     for (let gx = gxMin; gx < gxMax; gx++) {
-      walls.push({ gx, gz: gz1, dir: 'N' });
+      walls.push({ gx, gz: startGZ, dir: 'N' });
     }
-  }
-
-  // Vertical segment: E walls at x = gx2, from gz1 to gz2
-  if (gz2 !== gz1) {
-    const gzMin = Math.min(gz1, gz2);
-    const gzMax = Math.max(gz1, gz2);
+  } else {
+    // Vertical line at x = startGX + 1
+    const gzEnd = Math.floor(worldEnd.z);
+    const gzMin = Math.min(startGZ, gzEnd);
+    const gzMax = Math.max(startGZ, gzEnd);
     for (let gz = gzMin; gz < gzMax; gz++) {
-      walls.push({ gx: gx2 - 1, gz, dir: 'E' });
+      walls.push({ gx: startGX, gz, dir: 'E' });
     }
   }
-
   return walls;
 }
+
+// Compute orthogonal wall path: returns array of {gx, gz, dir}
+function computeOrthogonalWalls(worldA, worldB) {
 
 // Orthogonal wall path: L-shaped from start to end, horizontal-first
 function orthogonalWallPath(worldA, worldB) {
@@ -1362,22 +1360,30 @@ function onMouseDown(event) {
       }
 
       switch (tool) {
-        case 'paint':
+        case 'tile':
           state.mouseDown = true;
           state.mouseButton = 0;
-          paintAtMouse(event);
+          tileAtMouse(event);
           break;
         case 'fill':
           state.mouseDown = true;
           state.mouseButton = 0;
           state._dragStart = getWorldFromMouse(event);
-          paintAtMouse(event);
+          tileAtMouse(event);
           break;
         case 'wall':
           state.mouseDown = true;
           state.mouseButton = 0;
           state._dragStart = getWorldFromMouse(event);
           state._dragWallKeys = new Set();
+          {
+            const edge = getNearestEdge(event);
+            if (edge) {
+              state._dragEdgeDir = edge.dir;
+              state._dragEdgeGX = edge.gx;
+              state._dragEdgeGZ = edge.gz;
+            }
+          }
           break;
         case 'select':
           state.mouseDown = true;
@@ -1397,11 +1403,10 @@ function onMouseDown(event) {
           state.mouseDown = true;
           state.mouseButton = 0;
           state._dragStart = getWorldFromMouse(event);
-          paintAtMouse(event);
           break;
       }
     } else if (event.button === 2) {
-      if (tool === 'paint' || tool === 'fill') {
+      if (tool === 'tile' || tool === 'fill') {
         state.mouseDown = true;
         state.mouseButton = 2;
         if (tool === 'fill') state._dragStart = getWorldFromMouse(event);
@@ -1420,7 +1425,7 @@ function onMouseDown(event) {
   if (state.mode === '3d') {
     if (event.button === 0) {
       switch (tool) {
-        case 'paint': {
+        case 'tile': {
           state.mouseDown = true;
           state.mouseButton = 0;
           const world = getWorldFromMouse(event);
@@ -1443,7 +1448,8 @@ function onMouseDown(event) {
           if (world) {
             const gx = Math.floor(world.x);
             const gz = Math.floor(world.z);
-            if (!cellExists(gx, gz)) {
+            const existing = getCell(gx, gz);
+            if (!existing || existing.color !== state.activeColor) {
               setCell(gx, gz, state.activeColor);
               updateStatusBar();
             }
@@ -1455,6 +1461,14 @@ function onMouseDown(event) {
           state.mouseButton = 0;
           state._dragStart = getWorldFromMouse(event);
           state._dragWallKeys = new Set();
+          {
+            const edge = getNearestEdge(event);
+            if (edge) {
+              state._dragEdgeDir = edge.dir;
+              state._dragEdgeGX = edge.gx;
+              state._dragEdgeGZ = edge.gz;
+            }
+          }
           break;
         case 'select':
           state.mouseDown = true;
@@ -1470,16 +1484,7 @@ function onMouseDown(event) {
         case 'house': {
           state.mouseDown = true;
           state.mouseButton = 0;
-          const world = getWorldFromMouse(event);
-          state._dragStart = world;
-          if (world) {
-            const gx = Math.floor(world.x);
-            const gz = Math.floor(world.z);
-            if (!cellExists(gx, gz)) {
-              setCell(gx, gz, state.activeColor);
-              updateStatusBar();
-            }
-          }
+          state._dragStart = getWorldFromMouse(event);
           break;
         }
       }
@@ -1519,14 +1524,14 @@ function onMouseMove(event) {
       if (state._dragStart) {
         const world = getWorldFromMouse(event);
         if (world) {
-          if (tool === 'fill') fillRect(state._dragStart, world);
+          if (tool === 'fill') showDragPreview(state._dragStart, world);
           else if (tool === 'wall') {
             for (const key of state._dragWallKeys) {
               removeWallMeshByKey(key);
               state.walls.delete(key);
             }
             state._dragWallKeys.clear();
-            const walls = computeOrthogonalWalls(state._dragStart, world);
+            const walls = computePenWalls(state._dragEdgeGX, state._dragEdgeGZ, state._dragEdgeDir, world);
             for (const w of walls) {
               setWall(w.gx, w.gz, w.dir, state.wallColor, state.wallHeight);
               state._dragWallKeys.add(canonicalWallKey(w.gx, w.gz, w.dir));
@@ -1536,7 +1541,7 @@ function onMouseMove(event) {
           else if (tool === 'house') { showDragPreview(state._dragStart, world); }
         }
       } else {
-        if (tool === 'paint') paintAtMouse(event);
+        if (tool === 'tile') tileAtMouse(event);
       }
     }
 
@@ -1564,7 +1569,7 @@ function onMouseMove(event) {
     if (state.mouseDown && state.mouseButton === 0 && !state.selecting && (event.buttons & 1)) {
       const world = getWorldFromMouse(event);
       if (world && state._dragStart) {
-        if (tool === 'fill') fillRect(state._dragStart, world);
+        if (tool === 'fill') showDragPreview(state._dragStart, world);
         else if (tool === 'wall') {
           for (const key of state._dragWallKeys) {
             removeWallMeshByKey(key);
@@ -1582,7 +1587,7 @@ function onMouseMove(event) {
       } else if (world) {
         const gx = Math.floor(world.x);
         const gz = Math.floor(world.z);
-        if (tool === 'paint') {
+        if (tool === 'tile') {
           const existing = getCell(gx, gz);
           if (!existing || existing.color !== state.activeColor) {
             setCell(gx, gz, state.activeColor);
@@ -1647,6 +1652,18 @@ function onMouseUp(event) {
       }
     }
     state._dragWallKeys = null;
+    state._dragEdgeDir = null;
+    state._dragEdgeGX = null;
+    state._dragEdgeGZ = null;
+  }
+
+  // Fill tool: atomic on mouseup
+  if (tool === 'fill' && state._dragStart) {
+    hideDragPreview();
+    const world = getWorldFromMouse(event);
+    if (world) {
+      fillRect(state._dragStart, world);
+    }
   }
 
   // House tool: fill cells + wall perimeter, atomic on mouseup
@@ -1739,7 +1756,7 @@ function onKeyDown(event) {
   }
 
   // Tool shortcuts (1-5) — same in 2D and 3D
-  if (event.code === 'Digit1') { setActiveTool('paint'); return; }
+  if (event.code === 'Digit1') { setActiveTool('tile'); return; }
   if (event.code === 'Digit2') { setActiveTool('fill'); return; }
   if (event.code === 'Digit3') { setActiveTool('wall'); return; }
   if (event.code === 'Digit4') { setActiveTool('select'); return; }
@@ -1859,9 +1876,9 @@ function updateHelp() {
   const shiftActive = state.keys['ShiftLeft'] || state.keys['ShiftRight'];
 
   const toolActions = {
-    paint:  { lmb: 'paint cell', rmb: 'erase cell' },
+    tile:   { lmb: 'tile cell', rmb: 'erase cell' },
     fill:   { lmb: 'drag fill rect', rmb: 'drag erase rect' },
-    wall:   { lmb: 'click edge / drag orthogonal', rmb: '—' },
+    wall:   { lmb: 'click edge / drag pen line', rmb: '—' },
     select: { lmb: 'drag rubber-band select', rmb: '—' },
     house:  { lmb: 'drag fill + walls', rmb: '—' },
   };
@@ -1875,7 +1892,7 @@ function updateHelp() {
       <span class="key">Shift hold</span> <span class="dim">SELECT</span><br>
       <span class="key">Space+LMB</span> <span class="dim">pan</span> / <span class="key">MMB</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
-      <span class="key">1</span><span class="dim">Paint</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
+      <span class="key">1</span><span class="dim">Tile</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
       <span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">Del</span> <span class="dim">delete</span><br>
       <span class="key">Tab</span> <span class="dim">3D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
@@ -1887,7 +1904,7 @@ function updateHelp() {
       <span class="key">Scroll</span> <span class="dim">zoom to cursor</span> <span class="key">Shift</span> <span class="dim">boost</span><br>
       <span class="key">LMB</span> <span class="dim">${act.lmb}</span><br>
       <span class="key">Shift hold</span> <span class="dim">SELECT</span><br>
-      <span class="key">1</span><span class="dim">Paint</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
+      <span class="key">1</span><span class="dim">Tile</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
       <span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">Del</span> <span class="dim">delete</span><br>
       <span class="key">Tab</span> <span class="dim">2D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
@@ -2117,6 +2134,7 @@ window.CHIRAL_HAMMER = {
   wallRect,
   orthogonalWallPath,
   computeOrthogonalWalls,
+  computePenWalls,
   toggleSelectAtMouse2D,
   toggleSelectAtMouse3D,
   saveState,
