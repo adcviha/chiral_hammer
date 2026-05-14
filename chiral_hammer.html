@@ -958,6 +958,30 @@ function computePenWalls(startGX, startGZ, dir, worldEnd) {
 
 // Compute orthogonal wall path: returns array of {gx, gz, dir}
 function computeOrthogonalWalls(worldA, worldB) {
+  const walls = [];
+  const gx1 = Math.floor(worldA.x);
+  const gz1 = Math.floor(worldA.z);
+  const gx2 = Math.floor(worldB.x);
+  const gz2 = Math.floor(worldB.z);
+
+  if (gx2 !== gx1) {
+    const gxMin = Math.min(gx1, gx2);
+    const gxMax = Math.max(gx1, gx2);
+    for (let gx = gxMin; gx < gxMax; gx++) {
+      walls.push({ gx, gz: gz1, dir: 'N' });
+    }
+  }
+
+  if (gz2 !== gz1) {
+    const gzMin = Math.min(gz1, gz2);
+    const gzMax = Math.max(gz1, gz2);
+    for (let gz = gzMin; gz < gzMax; gz++) {
+      walls.push({ gx: gx2 - 1, gz, dir: 'E' });
+    }
+  }
+
+  return walls;
+}
 
 // Orthogonal wall path: L-shaped from start to end, horizontal-first
 function orthogonalWallPath(worldA, worldB) {
