@@ -379,7 +379,7 @@ scene.add(dirLight);
 
 // Grid lines
 const gridSize = 50;
-const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x404040, 0x202020);
+const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x5a6a7a, 0x4a5a6a);
 gridHelper.position.y = 0.001;
 scene.add(gridHelper);
 
@@ -398,6 +398,14 @@ const _wallGeo = new THREE.PlaneGeometry(1, 1);
 
 // Wall mesh cache: canonical key -> THREE.Mesh
 const wallMeshes = new Map();
+
+// 2D wall indicators (flat strips visible from top-down)
+const wall2DGroup = new THREE.Group();
+wall2DGroup.name = 'walls2d';
+wall2DGroup.renderOrder = 997;
+scene.add(wall2DGroup);
+const _wall2DGeo = new THREE.PlaneGeometry(1, 0.06);
+const wall2DMeshes = new Map();  // canonical key -> indicator Mesh
 
 // Highlight quad under cursor in 2D mode
 const highlightGeo = new THREE.PlaneGeometry(1, 1);
@@ -512,7 +520,7 @@ function parseWallKey(key) {
 }
 
 function canonicalWallKey(gx, gz, dir) {
-  if (dir === 'S') return wallKey(gx, gz + 1, 'N');
+  if (dir === 'S') return wallKey(gx, gz, 'N');
   if (dir === 'W') return wallKey(gx - 1, gz, 'E');
   return wallKey(gx, gz, dir);
 }
@@ -581,6 +589,25 @@ function addWallMesh(gx, gz, dir, color, height) {
   mesh.name = `wall-${key}`;
   wallGroup.add(mesh);
   wallMeshes.set(key, mesh);
+
+  // 2D indicator strip on the ground
+  if (wall2DMeshes.has(key)) {
+    wall2DGroup.remove(wall2DMeshes.get(key));
+    wall2DMeshes.get(key).material.dispose();
+  }
+  const indMat = new THREE.MeshBasicMaterial({ color: 0xcc6600, side: THREE.DoubleSide, depthTest: false });
+  const indMesh = new THREE.Mesh(_wall2DGeo, indMat);
+  indMesh.rotation.x = -Math.PI / 2;
+  indMesh.renderOrder = 997;
+  if (dir === 'N') {
+    indMesh.position.set(gx + 0.5, 0.015, gz);
+  } else {
+    indMesh.position.set(gx + 1, 0.015, gz + 0.5);
+    indMesh.rotation.z = -Math.PI / 2;
+  }
+  indMesh.name = `wall2d-${key}`;
+  wall2DGroup.add(indMesh);
+  wall2DMeshes.set(key, indMesh);
 }
 
 function removeWallMeshByKey(key) {
@@ -589,6 +616,12 @@ function removeWallMeshByKey(key) {
     wallGroup.remove(mesh);
     mesh.material.dispose();
     wallMeshes.delete(key);
+  }
+  const indMesh = wall2DMeshes.get(key);
+  if (indMesh) {
+    wall2DGroup.remove(indMesh);
+    indMesh.material.dispose();
+    wall2DMeshes.delete(key);
   }
 }
 
@@ -1159,6 +1192,27 @@ function onMouseDown(event) {
       selBox.style.top = event.clientY + 'px';
       selBox.style.width = '0px';
       selBox.style.height = '0px';
+    } else if (event.button === 0 && (state.keys['AltLeft'] || state.keys['AltRight'])) {
+      // Alt+LMB = toggle wall in 3D
+      const edge = getNearestEdge(event);
+      if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
+        toggleWall(edge.gx, edge.gz, edge.dir);
+        updateStatusBar();
+      }
+    } else if (event.button === 0) {
+      // LMB = paint cell in 3D
+      state.mouseDown = true;
+      state.mouseButton = 0;
+      const world = getWorldFromMouse(event);
+      if (world) {
+        const gx = Math.floor(world.x);
+        const gz = Math.floor(world.z);
+        if (state.fillMode) state._fillStart = world;
+        if (!cellExists(gx, gz)) {
+          setCell(gx, gz, state.activeColor);
+          updateStatusBar();
+        }
+      }
     } else if (event.button === 2) {
       state.rightDown = true;
       state.mouse.set(0, 0);
@@ -1215,16 +1269,33 @@ function onMouseMove(event) {
     }
   }
 
-  if (state.mode === '3d' && state.selecting) {
-    state.selectScreenEnd.set(event.clientX, event.clientY);
-    const x1 = Math.min(state.selectScreenStart.x, state.selectScreenEnd.x);
-    const y1 = Math.min(state.selectScreenStart.y, state.selectScreenEnd.y);
-    const x2 = Math.max(state.selectScreenStart.x, state.selectScreenEnd.x);
-    const y2 = Math.max(state.selectScreenStart.y, state.selectScreenEnd.y);
-    selBox.style.left = x1 + 'px';
-    selBox.style.top = y1 + 'px';
-    selBox.style.width = (x2 - x1) + 'px';
-    selBox.style.height = (y2 - y1) + 'px';
+  if (state.mode === '3d') {
+    // 3D paint-on-drag
+    if (state.mouseDown && state.mouseButton === 0 && !state.selecting && (event.buttons & 1)) {
+      const world = getWorldFromMouse(event);
+      if (world) {
+        const gx = Math.floor(world.x);
+        const gz = Math.floor(world.z);
+        if (state._fillStart) {
+          fillRect(state._fillStart, world);
+        } else if (!cellExists(gx, gz)) {
+          setCell(gx, gz, state.activeColor);
+          updateStatusBar();
+        }
+      }
+    }
+
+    if (state.selecting) {
+      state.selectScreenEnd.set(event.clientX, event.clientY);
+      const x1 = Math.min(state.selectScreenStart.x, state.selectScreenEnd.x);
+      const y1 = Math.min(state.selectScreenStart.y, state.selectScreenEnd.y);
+      const x2 = Math.max(state.selectScreenStart.x, state.selectScreenEnd.x);
+      const y2 = Math.max(state.selectScreenStart.y, state.selectScreenEnd.y);
+      selBox.style.left = x1 + 'px';
+      selBox.style.top = y1 + 'px';
+      selBox.style.width = (x2 - x1) + 'px';
+      selBox.style.height = (y2 - y1) + 'px';
+    }
   }
 }
 
@@ -1427,7 +1498,9 @@ function updateHelp() {
       <span class="key">Arrows</span> <span class="dim">look around</span><br>
       <span class="key">RMB hold</span> <span class="dim">mouse look</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom to cursor</span><br>
-      <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
+      <span class="key">LMB</span> <span class="dim">paint cell on ground</span><br>
+      <span class="key">Alt+LMB</span> <span class="dim">toggle wall</span><br>
+      <span class="key">Shift+LMB</span> <span class="dim">select cells/walls</span><br>
       <span class="key">G</span> <span class="dim">wireframe</span><br>
       <span class="key">Del</span> <span class="dim">delete selected</span><br>
       <span class="key">Tab</span> <span class="dim">switch to 2D</span><br>
@@ -1643,6 +1716,8 @@ window.CHIRAL_HAMMER = {
   deleteSelectedCells,
   wallMeshes,
   wallGroup,
+  wall2DMeshes,
+  wall2DGroup,
   setWall,
   removeWall,
   toggleWall,
