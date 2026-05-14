@@ -44,15 +44,34 @@ body {
   padding: 4px 8px;
   font-size: 11px;
   line-height: 1.6;
-  pointer-events: none;
+  pointer-events: auto;
+}
+#help-overlay .help-header {
+  display: flex; align-items: center; gap: 4px;
+  margin-bottom: 2px;
 }
 #help-overlay .mode-label {
   font-weight: bold;
   color: #000080;
-  margin-bottom: 2px;
+  flex: 1;
 }
+#help-overlay .help-minimize {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: bold;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 0px 5px;
+  cursor: pointer;
+  color: #000000;
+  line-height: 1;
+  pointer-events: auto;
+}
+#help-overlay .help-minimize:active { border-style: inset; }
 #help-overlay .key { color: #000080; font-weight: bold; }
 #help-overlay .dim { color: #808080; }
+#help-overlay.collapsed #help-keys { display: none; }
+#help-overlay.collapsed .help-header { margin-bottom: 0; }
 
 /* ===== TEXTURE PANEL — bottom-left ===== */
 #texture-panel {
@@ -219,7 +238,10 @@ body {
 
 <!-- HELP OVERLAY -->
 <div id="help-overlay">
-  <div class="mode-label" id="help-mode">2D PAINT</div>
+  <div class="help-header">
+    <span class="mode-label" id="help-mode">2D PAINT</span>
+    <button class="help-minimize" id="btn-help-min" title="Minimize">–</button>
+  </div>
   <div id="help-keys"></div>
 </div>
 
@@ -411,7 +433,7 @@ dirLight.position.set(10, 20, 5);
 scene.add(dirLight);
 
 // Grid lines
-const gridSize = 50;
+const gridSize = 200;
 const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x5a6a7a, 0x4a5a6a);
 gridHelper.position.y = 0.001;
 scene.add(gridHelper);
@@ -587,7 +609,7 @@ function getNearestEdge(event) {
 
 function updateEdgeHighlight(event) {
   const edge = getNearestEdge(event);
-  if (!edge || !edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
+  if (!edge) {
     edgeHighlight.visible = false;
     return;
   }
@@ -925,6 +947,23 @@ function updateSelRect() {
   selOutline.position.set((x1 + x2) / 2, 0.021, (z1 + z2) / 2);
 }
 
+function showDragPreview(worldA, worldB) {
+  selRectMat.color.set(0xff8800);
+  selOutlineMat.color.set(0x885500);
+  selRect.visible = true;
+  selOutline.visible = true;
+  state.selectStart.set(worldA.x, worldA.z);
+  state.selectEnd.set(worldB.x, worldB.z);
+  updateSelRect();
+}
+
+function hideDragPreview() {
+  selRect.visible = false;
+  selOutline.visible = false;
+  selRectMat.color.set(0x00ffff);
+  selOutlineMat.color.set(0x008888);
+}
+
 function commitSelection() {
   const x1 = Math.min(state.selectStart.x, state.selectEnd.x);
   const x2 = Math.max(state.selectStart.x, state.selectEnd.x);
@@ -1182,7 +1221,7 @@ function zoom2D(delta, cursorX, cursorY) {
   if (state.mode !== '2d') return;
 
   const oldZoom = state.camera2D.zoom;
-  const newZoom = Math.max(0.25, Math.min(8, oldZoom * (1 - delta * 0.001)));
+  const newZoom = Math.max(0.25, Math.min(8, oldZoom * (1 + delta * 0.001)));
   state.camera2D.zoom = newZoom;
 
   const ndcX = (cursorX / window.innerWidth) * 2 - 1;
@@ -1367,8 +1406,8 @@ function onMouseMove(event) {
         const world = getWorldFromMouse(event);
         if (world) {
           if (tool === 'fill') fillRect(state._dragStart, world);
-          else if (tool === 'wall') wallRect(state._dragStart, world);
-          else if (tool === 'house') { fillRect(state._dragStart, world); wallRect(state._dragStart, world); }
+          else if (tool === 'wall') showDragPreview(state._dragStart, world);
+          else if (tool === 'house') { fillRect(state._dragStart, world); showDragPreview(state._dragStart, world); }
         }
       } else {
         if (tool === 'paint') paintAtMouse(event);
@@ -1400,7 +1439,8 @@ function onMouseMove(event) {
       const world = getWorldFromMouse(event);
       if (world && state._dragStart) {
         if (tool === 'fill') fillRect(state._dragStart, world);
-        else if (tool === 'house') { fillRect(state._dragStart, world); wallRect(state._dragStart, world); }
+        else if (tool === 'wall') showDragPreview(state._dragStart, world);
+        else if (tool === 'house') { fillRect(state._dragStart, world); showDragPreview(state._dragStart, world); }
       } else if (world) {
         const gx = Math.floor(world.x);
         const gz = Math.floor(world.z);
@@ -1441,6 +1481,7 @@ function onMouseUp(event) {
 
   // Wall tool: small click = toggle single edge, drag = perimeter rect
   if (tool === 'wall' && state._dragStart) {
+    hideDragPreview();
     const world = getWorldFromMouse(event);
     if (world) {
       const dx = world.x - state._dragStart.x;
@@ -1454,6 +1495,15 @@ function onMouseUp(event) {
       } else {
         wallRect(state._dragStart, world);
       }
+    }
+  }
+
+  // House tool: wall the perimeter on mouseup
+  if (tool === 'house' && state._dragStart) {
+    hideDragPreview();
+    const world = getWorldFromMouse(event);
+    if (world) {
+      wallRect(state._dragStart, world);
     }
   }
 
@@ -1477,7 +1527,7 @@ function onWheel(event) {
     _raycaster.setFromCamera(_ndc, state.camera3D);
     const hit = new THREE.Vector3();
     const didHit = _raycaster.ray.intersectPlane(_plane, hit);
-    const dolly = event.deltaY * 0.05;
+    const dolly = -event.deltaY * 0.05;
     if (didHit) {
       const dir = new THREE.Vector3().subVectors(hit, state.camPos).normalize();
       state.camPos.addScaledVector(dir, dolly);
@@ -1512,6 +1562,11 @@ function onKeyDown(event) {
 
   if (event.code === 'KeyG') {
     toggleWireframe();
+    return;
+  }
+
+  if (event.code === 'KeyH') {
+    toggleFog();
     return;
   }
 
@@ -1607,6 +1662,20 @@ function toggleWireframe() {
   }
 }
 
+function toggleFog() {
+  if (scene.fog) {
+    scene.fog = null;
+  } else {
+    scene.fog = new THREE.Fog(0x4a6a7a, 30, 80);
+  }
+  updateHelp();
+}
+
+function toggleHelp() {
+  const overlay = document.getElementById('help-overlay');
+  overlay.classList.toggle('collapsed');
+}
+
 function toggleTreasureBox() {
   state.tbOpen = !state.tbOpen;
   if (state.tbOpen) {
@@ -1655,7 +1724,7 @@ function updateHelp() {
       <span class="key">Space+LMB</span> <span class="dim">pan</span> / <span class="key">MMB</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
       <span class="key">1</span><span class="dim">Paint</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
-      <span class="key">G</span> <span class="dim">wireframe</span> <span class="key">Del</span> <span class="dim">delete</span><br>
+      <span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">Del</span> <span class="dim">delete</span><br>
       <span class="key">Tab</span> <span class="dim">3D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
   } else {
@@ -1667,7 +1736,7 @@ function updateHelp() {
       <span class="key">LMB</span> <span class="dim">${act.lmb}</span><br>
       <span class="key">Shift hold</span> <span class="dim">SELECT</span><br>
       <span class="key">1</span><span class="dim">Paint</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
-      <span class="key">G</span> <span class="dim">wireframe</span> <span class="key">Del</span> <span class="dim">delete</span><br>
+      <span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">Del</span> <span class="dim">delete</span><br>
       <span class="key">Tab</span> <span class="dim">2D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
   }
@@ -1854,6 +1923,9 @@ function init() {
     btn.addEventListener('click', () => setActiveTool(btn.dataset.tool));
   });
 
+  // Wire help minimize button
+  document.getElementById('btn-help-min').addEventListener('click', toggleHelp);
+
   buildPalette();
   updateHelp();
   updateStatusBar();
@@ -1881,6 +1953,7 @@ window.CHIRAL_HAMMER = {
   toggleTexturePanel,
   toggleTreasureBox,
   toggleWireframe,
+  toggleFog,
   deleteSelectedCells,
   wallMeshes,
   wallGroup,
