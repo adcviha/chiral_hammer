@@ -405,7 +405,7 @@ const wall2DGroup = new THREE.Group();
 wall2DGroup.name = 'walls2d';
 wall2DGroup.renderOrder = 997;
 scene.add(wall2DGroup);
-const _wall2DGeo = new THREE.PlaneGeometry(1, 0.14);
+const _wall2DGeo = new THREE.PlaneGeometry(1, 0.08);
 const wall2DMeshes = new Map();  // canonical key -> indicator Mesh
 
 // Highlight quad under cursor in 2D mode
@@ -565,7 +565,7 @@ function updateEdgeHighlight(event) {
     edgeHighlight.rotation.set(-Math.PI / 2, 0, 0);
   } else {
     edgeHighlight.position.set(gx + 1, 0.015, gz + 0.5);
-    edgeHighlight.rotation.set(-Math.PI / 2, -Math.PI / 2, 0);
+    edgeHighlight.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
   }
   edgeHighlight.visible = true;
 }
@@ -693,7 +693,7 @@ function addCellMesh(gx, gz, color) {
     removeCellMesh(gx, gz);
   }
 
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
+  const mat = new THREE.MeshStandardMaterial({ color: '#222222', roughness: 0.85, side: THREE.DoubleSide });
   if (state.wireframe) mat.wireframe = true;
   const mesh = new THREE.Mesh(_cellGeo, mat);
   mesh.position.set(gx + 0.5, 0.002, gz + 0.5);
@@ -834,6 +834,28 @@ function eraseRect(worldA, worldB) {
         removeCell(gx, gz);
       }
     }
+  }
+  updateStatusBar();
+}
+
+function wallRect(worldA, worldB) {
+  const x1 = Math.min(worldA.x, worldB.x);
+  const x2 = Math.max(worldA.x, worldB.x);
+  const z1 = Math.min(worldA.z, worldB.z);
+  const z2 = Math.max(worldA.z, worldB.z);
+  const gx1 = Math.floor(x1);
+  const gx2 = Math.floor(x2 - 0.001);
+  const gz1 = Math.floor(z1);
+  const gz2 = Math.floor(z2 - 0.001);
+  // Top + bottom perimeter (N walls)
+  for (let gx = gx1; gx <= gx2; gx++) {
+    setWall(gx, gz2 + 1, 'N', state.wallColor, state.wallHeight);
+    setWall(gx, gz1, 'N', state.wallColor, state.wallHeight);
+  }
+  // Left + right perimeter (E walls)
+  for (let gz = gz1; gz <= gz2; gz++) {
+    setWall(gx1 - 1, gz, 'E', state.wallColor, state.wallHeight);
+    setWall(gx2, gz, 'E', state.wallColor, state.wallHeight);
   }
   updateStatusBar();
 }
@@ -1146,11 +1168,12 @@ function onMouseDown(event) {
           selRect.visible = true; selOutline.visible = true;
         }
       } else if (state.wallMode) {
-        // Wall mode: toggle wall on nearest edge
-        const edge = getNearestEdge(event);
-        if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
-          toggleWall(edge.gx, edge.gz, edge.dir);
-          updateStatusBar();
+        // Wall mode: start drag; single click toggles on mouseup
+        state.mouseDown = true;
+        state.mouseButton = 0;
+        const world = getWorldFromMouse(event);
+        if (world) {
+          state._wallDragStart = world.clone();
         }
       } else if (state.keys['Space']) {
         // Space+LMB = pan
@@ -1244,6 +1267,14 @@ function onMouseMove(event) {
       return;
     }
 
+    if (state.wallMode && state._wallDragStart && state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
+      const world = getWorldFromMouse(event);
+      if (world) {
+        wallRect(state._wallDragStart, world);
+      }
+      return;
+    }
+
     if (state.middleDown || (state.keys['Space'] && state.mouseDown)) {
       pan2D(event.movementX, event.movementY);
       return;
@@ -1276,6 +1307,13 @@ function onMouseMove(event) {
   }
 
   if (state.mode === '3d') {
+    // Edge highlight when Alt held
+    if (state.keys['AltLeft'] || state.keys['AltRight']) {
+      updateEdgeHighlight(event);
+    } else {
+      edgeHighlight.visible = false;
+    }
+
     // 3D paint-on-drag
     if (state.mouseDown && state.mouseButton === 0 && !state.selecting && (event.buttons & 1)) {
       const world = getWorldFromMouse(event);
@@ -1315,6 +1353,23 @@ function onMouseUp(event) {
       selRect.visible = false; selOutline.visible = false;
     }
     state.selecting = false;
+  }
+
+  // Wall mode: single click (no drag) toggles nearest edge
+  if (state._wallDragStart && state.mode === '2d') {
+    const world = getWorldFromMouse(event);
+    if (world) {
+      const dx = world.x - state._wallDragStart.x;
+      const dz = world.z - state._wallDragStart.z;
+      if (Math.abs(dx) < 0.3 && Math.abs(dz) < 0.3) {
+        const edge = getNearestEdge(event);
+        if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
+          toggleWall(edge.gx, edge.gz, edge.dir);
+          updateStatusBar();
+        }
+      }
+    }
+    state._wallDragStart = null;
   }
 
   state._fillStart = null;
