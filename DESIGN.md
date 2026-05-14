@@ -179,21 +179,24 @@ Modes:
 - Thicker rubber-band borders for both 2D and 3D selection
 - 3D camera starts centered on the painted mesh
 - Right-click hold (not toggle) for mouselook, lower sensitivity, smooth interpolation
-- T = texture panel (scaffold), B = treasure box (rename from current T)
+- LMB drag-fill, wireframe toggle, sky-blue fog background
+- T = texture panel (scaffold), B = treasure box
 
-### v0.8 — Selection transform
-- Move selected cells/faces
+### v0.8 — Walls
+- Toggle wall on a cell edge — vertical quad rising perpendicular
+- Alt+click near edge in 2D to place/remove walls
+- Adjustable height per wall segment
+- Walls selectable and texturable like cell faces
+- Orphan cleanup: removing last adjacent cell auto-deletes wall
+
+### v0.9 — Selection transform
+- Move selected cells/walls
 - Uniform scale selected cells
 - Grid-snapped by default, free with modifier
 
-### v0.9 — Extend / array on drag
+### v1.0 — Extend / array on drag
 - Modifier+drag to stamp copies of selection at grid intervals
 - Build repeating structures (floors, fences, columns) in one gesture
-
-### v1 — Walls
-- Toggle wall on a cell edge — vertical quad rising perpendicular
-- Adjustable height per wall segment
-- Walls selectable and texturable like cell faces
 
 ### v1.1 — Terrain brush
 - Weighted push/pull brush with radius and falloff

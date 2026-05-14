@@ -309,6 +309,12 @@ const state = {
   selectScreenEnd: new THREE.Vector2(),
   selectedCells: new Set(),   // Set of "x,z" keys
 
+  // walls
+  walls: new Map(),            // "gx,gz,N|E" -> { color, height }
+  selectedWalls: new Set(),    // Set of canonical wall keys
+  wallHeight: 1.0,
+  wallColor: '#8b7355',
+
   // display
   wireframe: false,
   fillMode: false,
@@ -382,6 +388,17 @@ const cellGroup = new THREE.Group();
 cellGroup.name = 'cells';
 scene.add(cellGroup);
 
+// Group for wall meshes
+const wallGroup = new THREE.Group();
+wallGroup.name = 'walls';
+scene.add(wallGroup);
+
+// Shared wall geometry (1x1, scaled per-wall)
+const _wallGeo = new THREE.PlaneGeometry(1, 1);
+
+// Wall mesh cache: canonical key -> THREE.Mesh
+const wallMeshes = new Map();
+
 // Highlight quad under cursor in 2D mode
 const highlightGeo = new THREE.PlaneGeometry(1, 1);
 const highlightMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthTest: false });
@@ -392,6 +409,18 @@ highlightQuad.visible = true;
 highlightQuad.renderOrder = 999;
 highlightQuad.material.depthTest = false;
 scene.add(highlightQuad);
+
+// Edge highlight for wall placement (Alt held in 2D)
+const edgeHighlightGeo = new THREE.PlaneGeometry(1, 0.08);
+const edgeHighlightMat = new THREE.MeshBasicMaterial({
+  color: 0xff8800, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthTest: false
+});
+const edgeHighlight = new THREE.Mesh(edgeHighlightGeo, edgeHighlightMat);
+edgeHighlight.position.y = 0.015;
+edgeHighlight.visible = false;
+edgeHighlight.renderOrder = 998;
+edgeHighlight.material.depthTest = false;
+scene.add(edgeHighlight);
 
 // Selection rubber-band rectangle (2D mode, Shift+drag)
 const selRectGeo = new THREE.PlaneGeometry(1, 1);
@@ -452,6 +481,7 @@ function removeCell(gx, gz) {
   const key = gridKey(gx, gz);
   state.grid.delete(key);
   removeCellMesh(gx, gz);
+  cleanOrphanWallsAround(gx, gz);
   markDirty();
 }
 
@@ -461,9 +491,160 @@ function clearAllCells() {
     removeCellMesh(gx, gz);
   }
   state.grid.clear();
+  for (const key of state.walls.keys()) {
+    removeWallMeshByKey(key);
+  }
+  state.walls.clear();
   markDirty();
   saveState();
   updateStatusBar();
+}
+
+// ===== WALL DATA MODEL =====
+
+function wallKey(gx, gz, dir) {
+  return `${gx},${gz},${dir}`;
+}
+
+function parseWallKey(key) {
+  const parts = key.split(',');
+  return { gx: Number(parts[0]), gz: Number(parts[1]), dir: parts[2] };
+}
+
+function canonicalWallKey(gx, gz, dir) {
+  if (dir === 'S') return wallKey(gx, gz + 1, 'N');
+  if (dir === 'W') return wallKey(gx - 1, gz, 'E');
+  return wallKey(gx, gz, dir);
+}
+
+function edgeHasAdjacentCell(gx, gz, dir) {
+  if (dir === 'N') return cellExists(gx, gz) || cellExists(gx, gz - 1);
+  if (dir === 'E') return cellExists(gx, gz) || cellExists(gx + 1, gz);
+  return false;
+}
+
+function getNearestEdge(event) {
+  const grid = getGridFromMouse(event);
+  if (!grid) return null;
+  const { gx, gz, worldX, worldZ } = grid;
+  const fx = worldX - gx;
+  const fz = worldZ - gz;
+  const distN = fz;
+  const distS = 1 - fz;
+  const distW = fx;
+  const distE = 1 - fx;
+  const threshold = 0.15;
+  const minDist = Math.min(distN, distS, distW, distE);
+  if (minDist > threshold) return null;
+  let cgx, cgz, cdir;
+  if (minDist === distN)      { cgx = gx;     cgz = gz;     cdir = 'N'; }
+  else if (minDist === distS) { cgx = gx;     cgz = gz + 1; cdir = 'N'; }
+  else if (minDist === distW) { cgx = gx - 1; cgz = gz;     cdir = 'E'; }
+  else                        { cgx = gx;     cgz = gz;     cdir = 'E'; }
+  return { gx: cgx, gz: cgz, dir: cdir, key: wallKey(cgx, cgz, cdir) };
+}
+
+function updateEdgeHighlight(event) {
+  const edge = getNearestEdge(event);
+  if (!edge || !edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
+    edgeHighlight.visible = false;
+    return;
+  }
+  const { gx, gz, dir } = edge;
+  if (dir === 'N') {
+    edgeHighlight.position.set(gx + 0.5, 0.015, gz);
+    edgeHighlight.rotation.set(-Math.PI / 2, 0, 0);
+  } else {
+    edgeHighlight.position.set(gx + 1, 0.015, gz + 0.5);
+    edgeHighlight.rotation.set(-Math.PI / 2, -Math.PI / 2, 0);
+  }
+  edgeHighlight.visible = true;
+}
+
+function addWallMesh(gx, gz, dir, color, height) {
+  const key = wallKey(gx, gz, dir);
+  if (wallMeshes.has(key)) {
+    wallGroup.remove(wallMeshes.get(key));
+    wallMeshes.get(key).material.dispose();
+  }
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
+  if (state.wireframe) mat.wireframe = true;
+  const mesh = new THREE.Mesh(_wallGeo, mat);
+  if (dir === 'N') {
+    mesh.position.set(gx + 0.5, height / 2, gz);
+    mesh.scale.set(1, height, 1);
+  } else {
+    mesh.position.set(gx + 1, height / 2, gz + 0.5);
+    mesh.rotation.y = -Math.PI / 2;
+    mesh.scale.set(1, height, 1);
+  }
+  mesh.name = `wall-${key}`;
+  wallGroup.add(mesh);
+  wallMeshes.set(key, mesh);
+}
+
+function removeWallMeshByKey(key) {
+  const mesh = wallMeshes.get(key);
+  if (mesh) {
+    wallGroup.remove(mesh);
+    mesh.material.dispose();
+    wallMeshes.delete(key);
+  }
+}
+
+function setWall(gx, gz, dir, color, height) {
+  const key = canonicalWallKey(gx, gz, dir);
+  const parsed = parseWallKey(key);
+  state.walls.set(key, { color, height });
+  addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
+  markDirty();
+}
+
+function removeWall(gx, gz, dir) {
+  const key = canonicalWallKey(gx, gz, dir);
+  state.walls.delete(key);
+  removeWallMeshByKey(key);
+  markDirty();
+}
+
+function toggleWall(gx, gz, dir) {
+  const key = canonicalWallKey(gx, gz, dir);
+  if (state.walls.has(key)) {
+    removeWall(gx, gz, dir);
+  } else {
+    const parsed = parseWallKey(key);
+    if (edgeHasAdjacentCell(parsed.gx, parsed.gz, parsed.dir)) {
+      setWall(gx, gz, dir, state.wallColor, state.wallHeight);
+    }
+  }
+}
+
+function cleanOrphanWallsAround(gx, gz) {
+  const edges = [
+    { cgx: gx,     cgz: gz,     cdir: 'N' },
+    { cgx: gx,     cgz: gz + 1, cdir: 'N' },
+    { cgx: gx,     cgz: gz,     cdir: 'E' },
+    { cgx: gx - 1, cgz: gz,     cdir: 'E' },
+  ];
+  for (const { cgx, cgz, cdir } of edges) {
+    const key = wallKey(cgx, cgz, cdir);
+    if (state.walls.has(key) && !edgeHasAdjacentCell(cgx, cgz, cdir)) {
+      removeWallMeshByKey(key);
+      state.walls.delete(key);
+    }
+  }
+}
+
+function updateWallSelectionVisual(key, selected) {
+  const mesh = wallMeshes.get(key);
+  if (!mesh) return;
+  if (selected) {
+    mesh.material.emissive = new THREE.Color(0x444400);
+    mesh.material.emissiveIntensity = 0.6;
+  } else {
+    mesh.material.emissive = new THREE.Color(0x000000);
+    mesh.material.emissiveIntensity = 0;
+  }
 }
 
 // ===== CELL MESHES =====
@@ -564,8 +745,15 @@ function paintAtMouse(event) {
 function updateHighlight(event) {
   if (state.mode !== '2d') {
     highlightQuad.visible = false;
+    edgeHighlight.visible = false;
     return;
   }
+  if (state.keys['AltLeft'] || state.keys['AltRight']) {
+    highlightQuad.visible = false;
+    updateEdgeHighlight(event);
+    return;
+  }
+  edgeHighlight.visible = false;
   const grid = getGridFromMouse(event);
   if (!grid) {
     highlightQuad.visible = false;
@@ -658,6 +846,17 @@ function commitSelection() {
       }
     }
   }
+
+  // Select walls whose midpoint falls within the rectangle
+  for (const [key, wall] of state.walls) {
+    const { gx, gz, dir } = parseWallKey(key);
+    const mx = dir === 'N' ? gx + 0.5 : gx + 1;
+    const mz = dir === 'N' ? gz : gz + 0.5;
+    if (mx >= x1 && mx <= x2 && mz >= z1 && mz <= z2) {
+      state.selectedWalls.add(key);
+      updateWallSelectionVisual(key, true);
+    }
+  }
 }
 
 function commitSelection3D() {
@@ -689,6 +888,17 @@ function commitSelection3D() {
       updateCellSelectionVisual(key, true);
     }
   }
+
+  for (const [key, mesh] of wallMeshes) {
+    const wp = mesh.position.clone().project(state.camera3D);
+    if (wp.z > 1) continue;
+    const sx = (wp.x * 0.5 + 0.5) * window.innerWidth;
+    const sy = (-wp.y * 0.5 + 0.5) * window.innerHeight;
+    if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
+      state.selectedWalls.add(key);
+      updateWallSelectionVisual(key, true);
+    }
+  }
 }
 
 function clearSelection() {
@@ -696,6 +906,10 @@ function clearSelection() {
     updateCellSelectionVisual(key, false);
   }
   state.selectedCells.clear();
+  for (const key of state.selectedWalls) {
+    updateWallSelectionVisual(key, false);
+  }
+  state.selectedWalls.clear();
 }
 
 function deleteSelectedCells() {
@@ -704,6 +918,11 @@ function deleteSelectedCells() {
     removeCell(gx, gz);
   }
   state.selectedCells.clear();
+  for (const key of state.selectedWalls) {
+    removeWallMeshByKey(key);
+    state.walls.delete(key);
+  }
+  state.selectedWalls.clear();
   updateStatusBar();
 }
 
@@ -756,8 +975,8 @@ function update3DCamera(deltaSec) {
 
   if (state.keys['KeyW']) state.camPos.addScaledVector(forward, moveSpeed);
   if (state.keys['KeyS']) state.camPos.addScaledVector(forward, -moveSpeed);
-  if (state.keys['KeyA']) state.camPos.addScaledVector(right, -moveSpeed);
-  if (state.keys['KeyD']) state.camPos.addScaledVector(right, moveSpeed);
+  if (state.keys['KeyA']) state.camPos.addScaledVector(right, moveSpeed);
+  if (state.keys['KeyD']) state.camPos.addScaledVector(right, -moveSpeed);
   if (state.keys['KeyQ']) state.camPos.y -= moveSpeed;
   if (state.keys['KeyE']) state.camPos.y += moveSpeed;
 
@@ -876,6 +1095,16 @@ function onMouseDown(event) {
   if (event.target !== renderer.domElement) return;
 
   if (state.mode === '2d') {
+    // Alt+click toggles wall on nearest edge
+    if ((state.keys['AltLeft'] || state.keys['AltRight']) && event.button === 0) {
+      const edge = getNearestEdge(event);
+      if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
+        toggleWall(edge.gx, edge.gz, edge.dir);
+        updateStatusBar();
+      }
+      return;
+    }
+
     if (event.button === 0) {
       state.mouseDown = true;
       state.mouseButton = 0;
@@ -1144,6 +1373,9 @@ function toggleWireframe() {
   for (const mesh of cellMeshes.values()) {
     mesh.material.wireframe = state.wireframe;
   }
+  for (const mesh of wallMeshes.values()) {
+    mesh.material.wireframe = state.wireframe;
+  }
 }
 
 function toggleTreasureBox() {
@@ -1163,7 +1395,7 @@ function updateStatusBar() {
   } else {
     sbMode.textContent = '3D FLY';
   }
-  sbCells.textContent = state.grid.size;
+  sbCells.textContent = state.grid.size + (state.walls.size ? ` +${state.walls.size}w` : '');
 }
 
 // ===== HELP OVERLAY =====
@@ -1175,6 +1407,7 @@ function updateHelp() {
     helpKeys.innerHTML = `
       <span class="key">LMB</span> <span class="dim">${state.fillMode ? 'drag fill rect' : 'paint cell'}</span><br>
       <span class="key">RMB</span> <span class="dim">${state.fillMode ? 'drag erase rect' : 'erase cell'}</span><br>
+      <span class="key">Alt+LMB</span> <span class="dim">toggle wall on edge</span><br>
       <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
       <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
       <span class="key">MMB drag</span> <span class="dim">pan</span><br>
@@ -1205,7 +1438,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.71';
+const STORAGE_KEY = 'chiral_hammer:v0.8';
 
 function markDirty() {
   state.dirty = true;
@@ -1220,8 +1453,9 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.71,
+    version: 0.8,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
+    walls: Array.from(state.walls.entries()).map(([key, val]) => ({ key, color: val.color, height: val.height })),
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -1249,6 +1483,12 @@ function loadState() {
       sbSave.textContent = 'LOADED';
       sbSave.style.color = '#008000';
     }
+    if (data.walls && Array.isArray(data.walls)) {
+      for (const wall of data.walls) {
+        const { gx, gz, dir } = parseWallKey(wall.key);
+        setWall(gx, gz, dir, wall.color, wall.height || state.wallHeight);
+      }
+    }
   } catch (e) {
     console.warn('Failed to load:', e);
   }
@@ -1256,8 +1496,9 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.71,
+    version: 0.8,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
+    walls: Array.from(state.walls.entries()).map(([key, val]) => ({ key, color: val.color, height: val.height })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -1281,6 +1522,12 @@ function importJSON(file) {
       for (const cell of data.cells) {
         const [gx, gz] = cell.key.split(',').map(Number);
         setCell(gx, gz, cell.color);
+      }
+      if (data.walls && Array.isArray(data.walls)) {
+        for (const wall of data.walls) {
+          const { gx, gz, dir } = parseWallKey(wall.key);
+          setWall(gx, gz, dir, wall.color, wall.height || state.wallHeight);
+        }
       }
       state.dirty = false;
       saveState();
@@ -1394,6 +1641,11 @@ window.CHIRAL_HAMMER = {
   toggleWireframe,
   toggleFillMode,
   deleteSelectedCells,
+  wallMeshes,
+  wallGroup,
+  setWall,
+  removeWall,
+  toggleWall,
   saveState,
   loadState,
   exportJSON,

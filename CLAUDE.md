@@ -40,36 +40,35 @@ index.html          — redirect for GitHub Pages root URL
 
 ## How to run / test
 
-Open `chiral_hammer.html` directly in a modern browser. No server needed. State persists to `localStorage` under key `chiral_hammer:v0.71`. To wipe state during development: clear that key in DevTools, or hit the CLEAR button in the UI.
+Open `chiral_hammer.html` directly in a modern browser. No server needed. State persists to `localStorage` under key `chiral_hammer:v0.8`. To wipe state during development: clear that key in DevTools, or hit the CLEAR button in the UI.
 
 Live at: `https://adcviha.github.io/chiral_hammer/`
 
-## What's done (v0.0 – v0.7)
+## What's done (v0.0 – v0.8)
 
 - Top-down 2D cell painter (orthographic camera, LMB drag fill, RMB erase, Space/MMB pan, scroll zoom)
 - 3D free-fly camera (WASD move, arrows look, Q/E up/down, Shift boost, RMB hold mouselook, scroll zoom-to-cursor)
 - Flat seamless cell planes (PlaneGeometry, aligned to grid, sky-blue fog background)
-- `Tab` toggles 2D/3D; `T` texture panel, `B` treasure box; `F` wireframe toggle
+- **Walls** — Alt+click edge to toggle vertical quads in 2D, selectable/deletable, persisted with save
+- `Tab` toggles 2D/3D; `T` texture panel, `B` treasure box; `F` fill mode toggle, `G` wireframe toggle
 - Drag selection: Shift+LMB free world-space rubber-band in 2D, screen-space projection in 3D
-- Selected cells get emissive tint; click empty space to deselect
+- Selected cells/walls get emissive tint; Delete key removes selection; click empty space to deselect
 - T + B bottom panels with maximize (fullscreen) and minimize buttons
-- JSON export/import
+- JSON export/import (cells + walls)
 - Auto-save to localStorage
-- Status bar (mode / cell count / cursor coords / save state)
+- Status bar (mode / cell+wall count / cursor coords / save state)
 - Help overlay shows current-mode controls
 - Smooth-lerp mouselook with low sensitivity
-- GitHub Pages auto-deploy on push to master
 
 ## What's next
 
 See DESIGN.md for the full roadmap. Immediate next:
 
-- **v0.71** — Bugfixes / polish as needed
-- **v0.8** — Selection transform (move, rotate, scale selected cells)
-- **v0.9** — Extend/array on drag
-- **v1** — Walls as edge quads + slice tool for doors/windows
+- **v0.81** — Bugfixes / polish as needed
+- **v0.9** — Selection transform (move, rotate, scale selected cells/walls)
+- **v1.0** — Extend/array on drag
 - **v1.1** — Terrain brush (weighted push/pull with radius)
-- **v1.2** — Face splitting preserving UVs
+- **v1.2** — Slice tool + face splitting (doors/windows)
 - **v2** — Texture pipeline (paste, assign, UV adjust, crush)
 
 ## Version incrementing
