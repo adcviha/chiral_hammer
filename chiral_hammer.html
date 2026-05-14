@@ -11,7 +11,7 @@
 * { margin: 0; padding: 0; }
 
 body {
-  background: #4a6a7a;
+  background: #3a5a8a;
   font-family: "MS Sans Serif", "Microsoft Sans Serif", Geneva, sans-serif;
   font-size: 11px;
   overflow: hidden;
@@ -186,7 +186,7 @@ body {
 }
 </style>
 </head>
-<body bgcolor="#4a6a7a" text="#000000">
+<body bgcolor="#3a5a8a" text="#000000">
 
 <div id="canvas-container"></div>
 
@@ -334,14 +334,14 @@ const selBox = document.getElementById('sel-box');
 
 // ===== THREE.JS SETUP =====
 
+const scene = new THREE.Scene();
+
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x4a6a7a);
-scene.fog = new THREE.Fog(0x4a6a7a, 30, 80);
+renderer.setClearColor(0x3a5a8a);
+scene.fog = new THREE.Fog(0x3a5a8a, 30, 80);
 container.appendChild(renderer.domElement);
-
-const scene = new THREE.Scene();
 
 // 2D orthographic camera
 const frustumSize = 20;
@@ -794,7 +794,7 @@ function setMode(mode) {
       state.camPos.set(bounds.cx + dist, h, bounds.cz + dist);
       const dir = new THREE.Vector3(bounds.cx, 0, bounds.cz).sub(state.camPos).normalize();
       state.camYaw = Math.atan2(dir.x, dir.z);
-      state.camPitch = Math.asin(dir.y);
+      state.camPitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
       state.targetYaw = state.camYaw;
       state.targetPitch = state.camPitch;
     }
@@ -1011,7 +1011,6 @@ function onWheel(event) {
       ).normalize();
       state.camPos.addScaledVector(fwd, dolly);
     }
-    state.camPos.y = Math.max(0.5, state.camPos.y);
   }
 }
 
@@ -1149,7 +1148,7 @@ function updateHelp() {
 
 // ===== PERSISTENCE =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.7';
+const STORAGE_KEY = 'chiral_hammer:v0.71';
 
 function markDirty() {
   state.dirty = true;
@@ -1164,7 +1163,7 @@ function scheduleSave() {
 
 function saveState() {
   const data = {
-    version: 0.7,
+    version: 0.71,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   try {
@@ -1200,7 +1199,7 @@ function loadState() {
 
 function exportJSON() {
   const data = {
-    version: 0.7,
+    version: 0.71,
     cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

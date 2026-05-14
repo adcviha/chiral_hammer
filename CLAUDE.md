@@ -24,6 +24,7 @@ Don't break these without checking first:
 
 - All state in one `state` object near the top of the script.
 - Banner comments (`// ===== SECTION =====`) separate major systems: setup, state, rendering, 2D input, 3D input, UI, persistence, main loop.
+- **`const` declarations before any code that uses them.** Module-level setup blocks must be ordered so no block references a `const` or `let` declared in a later block. This has caused two catastrophic crashes (selOutline before declaration, scene before renderer). The pattern: keep the declaration order as `scene → renderer → cameras → lights → objects → scratch vars`, and never inline a reference to something declared further down.
 - Module-level scratch Three.js objects prefixed with `_` (e.g. `_m4`, `_ndc`, `_hit`) — reused to avoid GC pressure in the render loop.
 - Functions short and named for what they do.
 - Internals exposed via `window.CHIRAL_HAMMER` for console hacking.
@@ -39,25 +40,9 @@ index.html          — redirect for GitHub Pages root URL
 
 ## How to run / test
 
-Open `chiral_hammer.html` directly in a modern browser. No server needed. State persists to `localStorage` under key `chiral_hammer:v0.6`. To wipe state during development: clear that key in DevTools, or hit the CLEAR button in the UI.
+Open `chiral_hammer.html` directly in a modern browser. No server needed. State persists to `localStorage` under key `chiral_hammer:v0.71`. To wipe state during development: clear that key in DevTools, or hit the CLEAR button in the UI.
 
 Live at: `https://adcviha.github.io/chiral_hammer/`
-
-## What's done (v0.0 – v0.6)
-
-- Top-down 2D cell painter (orthographic camera, paint/erase/pan/zoom)
-- 3D free-fly camera (WASD + Q/E + Shift, right-click hold for mouselook, pointer lock)
-- Flat seamless cell planes (PlaneGeometry, aligned to grid)
-- `Tab` toggles 2D/3D modes; `T` toggles treasure box panel (bottom)
-- Drag selection: Shift+LMB rubber-band in both 2D (grid-aligned) and 3D (screen-space projection)
-- Selected cells get emissive tint; click empty space to deselect
-- Treasure box panel (bottom, scaffold — no save flow yet)
-- JSON export/import
-- Auto-save to localStorage
-- Status bar (mode / cell count / cursor coords / save state)
-- Help overlay shows current-mode controls
-- Space+LMB pan in 2D (trackpad-friendly alternative to MMB)
-- GitHub Pages auto-deploy on push to master
 
 ## What's done (v0.0 – v0.7)
 
