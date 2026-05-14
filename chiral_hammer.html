@@ -1669,8 +1669,8 @@ function onMouseUp(event) {
       const dz = world.z - state._dragStart.z;
       if (Math.abs(dx) < 0.3 && Math.abs(dz) < 0.3) {
         const edge = getNearestEdge(event);
-        if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
-          toggleWall(edge.gx, edge.gz, edge.dir);
+        if (edge) {
+          setWall(edge.gx, edge.gz, edge.dir, state.wallColor, state.wallHeight);
           updateStatusBar();
         }
       }
