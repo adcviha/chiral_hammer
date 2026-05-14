@@ -93,3 +93,9 @@ See DESIGN.md for the full roadmap. Immediate next:
 - A user request that would require adding a framework, build chain, or large dependency — flag the tradeoff before doing it.
 - A feature that conflicts with PS1-era simplicity (PBR, fancy shadows, smooth subdivision) — conflicts with the aesthetic target.
 - Anything cascading or recursive (prefabs containing prefabs, nested editors) — the user explicitly chose to keep the mental model flat.
+
+## When to confirm before coding
+
+- **The user describes a behavior change imprecisely** (vague language, contradictory signals, "I'm not sure how to describe this"). Pause, replay what you understood in your own words, and get explicit confirmation before touching any code. The user is an indie game designer, not a graphics engineer — they may lack precise terminology for what they want. Your job is to bridge that gap, not exploit the ambiguity to build the wrong thing.
+- Examples of signals: "I'm not exactly sure how to describe that," "it's like... but also...," "I can't imagine exactly without trying," or when they describe a fix but also describe behavior that contradicts the fix.
+- Once confirmed, implement exactly what was agreed. Don't add "while I was in there" changes.

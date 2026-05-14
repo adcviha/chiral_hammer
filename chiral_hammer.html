@@ -931,6 +931,34 @@ function wallRect(worldA, worldB) {
   updateStatusBar();
 }
 
+// Orthogonal wall path: L-shaped from start to end, horizontal-first
+function orthogonalWallPath(worldA, worldB) {
+  const gx1 = Math.floor(worldA.x);
+  const gz1 = Math.floor(worldA.z);
+  const gx2 = Math.floor(worldB.x);
+  const gz2 = Math.floor(worldB.z);
+
+  // Horizontal segment: N walls at z = gz1, from gx1 to gx2
+  if (gx2 !== gx1) {
+    const gxMin = Math.min(gx1, gx2);
+    const gxMax = Math.max(gx1, gx2);
+    for (let gx = gxMin; gx < gxMax; gx++) {
+      setWall(gx, gz1, 'N', state.wallColor, state.wallHeight);
+    }
+  }
+
+  // Vertical segment: E walls at x = gx2, from gz1 to gz2
+  if (gz2 !== gz1) {
+    const gzMin = Math.min(gz1, gz2);
+    const gzMax = Math.max(gz1, gz2);
+    for (let gz = gzMin; gz < gzMax; gz++) {
+      setWall(gx2 - 1, gz, 'E', state.wallColor, state.wallHeight);
+    }
+  }
+
+  updateStatusBar();
+}
+
 // ===== SELECTION =====
 
 function updateSelRect() {
@@ -1407,7 +1435,7 @@ function onMouseMove(event) {
         if (world) {
           if (tool === 'fill') fillRect(state._dragStart, world);
           else if (tool === 'wall') showDragPreview(state._dragStart, world);
-          else if (tool === 'house') { fillRect(state._dragStart, world); showDragPreview(state._dragStart, world); }
+          else if (tool === 'house') { showDragPreview(state._dragStart, world); }
         }
       } else {
         if (tool === 'paint') paintAtMouse(event);
@@ -1440,7 +1468,7 @@ function onMouseMove(event) {
       if (world && state._dragStart) {
         if (tool === 'fill') fillRect(state._dragStart, world);
         else if (tool === 'wall') showDragPreview(state._dragStart, world);
-        else if (tool === 'house') { fillRect(state._dragStart, world); showDragPreview(state._dragStart, world); }
+        else if (tool === 'house') { showDragPreview(state._dragStart, world); }
       } else if (world) {
         const gx = Math.floor(world.x);
         const gz = Math.floor(world.z);
@@ -1479,7 +1507,7 @@ function onMouseUp(event) {
     state.selecting = false;
   }
 
-  // Wall tool: small click = toggle single edge, drag = perimeter rect
+  // Wall tool: small click = toggle single edge, drag = orthogonal path
   if (tool === 'wall' && state._dragStart) {
     hideDragPreview();
     const world = getWorldFromMouse(event);
@@ -1493,16 +1521,17 @@ function onMouseUp(event) {
           updateStatusBar();
         }
       } else {
-        wallRect(state._dragStart, world);
+        orthogonalWallPath(state._dragStart, world);
       }
     }
   }
 
-  // House tool: wall the perimeter on mouseup
+  // House tool: fill cells + wall perimeter, atomic on mouseup
   if (tool === 'house' && state._dragStart) {
     hideDragPreview();
     const world = getWorldFromMouse(event);
     if (world) {
+      fillRect(state._dragStart, world);
       wallRect(state._dragStart, world);
     }
   }
@@ -1709,7 +1738,7 @@ function updateHelp() {
   const toolActions = {
     paint:  { lmb: 'paint cell', rmb: 'erase cell' },
     fill:   { lmb: 'drag fill rect', rmb: 'drag erase rect' },
-    wall:   { lmb: 'click edge / drag perimeter', rmb: '—' },
+    wall:   { lmb: 'click edge / drag orthogonal', rmb: '—' },
     select: { lmb: 'drag rubber-band select', rmb: '—' },
     house:  { lmb: 'drag fill + walls', rmb: '—' },
   };
@@ -1962,6 +1991,8 @@ window.CHIRAL_HAMMER = {
   setWall,
   removeWall,
   toggleWall,
+  wallRect,
+  orthogonalWallPath,
   saveState,
   loadState,
   exportJSON,
