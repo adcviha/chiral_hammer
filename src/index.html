@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="Notepad">
+<title>Chiral Hammer v0.10.0</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body bgcolor="#4a6a7a" text="#000000">
+
+<div id="canvas-container"></div>
+
+<!-- SELECTION RUBBER-BAND -->
+<div id="sel-box"></div>
+
+<!-- HELP OVERLAY -->
+<div id="help-overlay">
+  <div class="help-header">
+    <span class="mode-label" id="help-mode">2D TILE</span>
+    <button class="help-minimize" id="btn-help-min" title="Minimize">&ndash;</button>
+  </div>
+  <div id="help-keys"></div>
+</div>
+
+<!-- COLOR PALETTE -->
+<div id="palette"></div>
+
+<!-- TOP BUTTONS -->
+<div id="btn-row">
+  <button class="tool-btn" id="btn-export" title="Export JSON">EXPORT</button>
+  <button class="tool-btn" id="btn-import-file" title="Import JSON">IMPORT</button>
+  <button class="tool-btn" id="btn-clear" title="Clear all cells">CLEAR</button>
+</div>
+
+<!-- TOOL PALETTE -->
+<div id="tool-palette">
+  <button class="tpl-btn active" data-tool="tile" title="Tile cells (1)">1 TILE</button>
+  <button class="tpl-btn" data-tool="fill" title="Fill rect (2)">2 FILL</button>
+  <button class="tpl-btn" data-tool="wall" title="Place walls (3)">3 WALL</button>
+  <button class="tpl-btn" data-tool="select" title="Select (4)">4 SELECT</button>
+  <button class="tpl-btn" data-tool="house" title="Fill + Walls (5)">5 HOUSE</button>
+</div>
+<input type="file" id="import-input" accept=".json" style="display:none">
+
+<!-- TEXTURE PANEL -->
+<div id="texture-panel">
+  <div class="tp-header">
+    <span class="tp-title">TEXTURE LIBRARY</span>
+    <button class="panel-btn" id="btn-tp-max" title="Maximize">&#x25A1;</button>
+    <button class="panel-btn" id="btn-tp-min" title="Minimize">&#x2014;</button>
+  </div>
+  <div class="tp-body">
+    No textures imported yet.<br>Paste (Ctrl+V) or drop an image to get started.
+  </div>
+</div>
+
+<!-- TREASURE BOX -->
+<div id="treasure-box">
+  <div class="tb-header">
+    <span class="tb-title">TREASURE BOX</span>
+    <button class="panel-btn" id="btn-tb-max" title="Maximize">&#x25A1;</button>
+    <button class="panel-btn" id="btn-tb-min" title="Minimize">&#x2014;</button>
+  </div>
+  <div class="tb-body">
+    No prefabs yet.<br>Select geometry and save to get started.
+  </div>
+</div>
+
+<!-- CONTROL PANEL -->
+<div id="control-panel"></div>
+
+<!-- STATUS BAR -->
+<div id="status-bar">
+  <div class="sb-panel">
+    <span class="sb-label">MODE:</span>
+    <span id="sb-mode">2D TILE</span>
+  </div>
+  <div class="sb-panel">
+    <span class="sb-label">CELLS:</span>
+    <span id="sb-cells">0</span>
+  </div>
+  <div class="sb-panel">
+    <span class="sb-label">CURSOR:</span>
+    <span id="sb-cursor">&mdash;</span>
+  </div>
+  <span class="sb-spacer"></span>
+  <div class="sb-panel">
+    <span id="sb-save">SAVED</span>
+  </div>
+</div>
+
+<!-- THREE.JS CDN (global build, works from file://) -->
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+
+<!-- CHIRAL HAMMER SOURCE — dependency order matters -->
+<script src="state.js"></script>
+<script src="scene.js"></script>
+<script src="camera.js"></script>
+<script src="input.js"></script>
+<script src="tools/tile.js"></script>
+<script src="tools/fill.js"></script>
+<script src="tools/wall.js"></script>
+<script src="tools/select.js"></script>
+<script src="tools/house.js"></script>
+<script src="ui.js"></script>
+<script src="persistence.js"></script>
+<script src="main.js"></script>
+
+</body>
+</html>

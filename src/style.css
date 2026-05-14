@@ -1,0 +1,292 @@
+/* ===== CHIRAL HAMMER v0.10.0 — 90s HTML AESTHETIC ===== */
+
+* { margin: 0; padding: 0; }
+
+body {
+  background: #4a6a7a;
+  font-family: "MS Sans Serif", "Microsoft Sans Serif", Geneva, sans-serif;
+  font-size: 11px;
+  overflow: hidden;
+  color: #000000;
+}
+
+/* ===== CANVAS ===== */
+#canvas-container {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 1;
+}
+#canvas-container canvas { display: block; }
+
+/* ===== SELECTION RUBBER-BAND (screen-space, 3D mode) ===== */
+#sel-box {
+  position: fixed;
+  border: 2px solid #008888;
+  background: rgba(0, 255, 255, 0.2);
+  pointer-events: none;
+  z-index: 15;
+  display: none;
+}
+
+/* ===== HELP OVERLAY — classic tooltip ===== */
+#help-overlay {
+  position: fixed; top: 8px; left: 8px;
+  z-index: 10;
+  background: #ffffcc;
+  border: 1px solid #000000;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  pointer-events: auto;
+}
+#help-overlay .help-header {
+  display: flex; align-items: center; gap: 4px;
+  margin-bottom: 2px;
+}
+#help-overlay .mode-label {
+  font-weight: bold;
+  color: #000080;
+  flex: 1;
+}
+#help-overlay .help-minimize {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: bold;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 0px 5px;
+  cursor: pointer;
+  color: #000000;
+  line-height: 1;
+  pointer-events: auto;
+}
+#help-overlay .help-minimize:active { border-style: inset; }
+#help-overlay .key { color: #000080; font-weight: bold; }
+#help-overlay .dim { color: #808080; }
+#help-overlay.collapsed #help-keys { display: none; }
+#help-overlay.collapsed .help-header { margin-bottom: 0; }
+
+/* ===== TEXTURE PANEL — bottom-left ===== */
+#texture-panel {
+  position: fixed; bottom: 22px; left: 0; right: 50%;
+  z-index: 20;
+  height: 180px;
+  background: #c0c0c0;
+  border-top: 2px outset #ffffff;
+  border-right: 2px outset #ffffff;
+  display: none;
+}
+#texture-panel.open { display: block; }
+#texture-panel.maximized { top: 0; bottom: 22px; right: 0; height: auto; z-index: 25; }
+#texture-panel .tp-header {
+  background: #000080;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 11px;
+  padding: 2px 4px;
+  display: flex; align-items: center; gap: 2px;
+}
+#texture-panel .tp-header .tp-title { flex: 1; }
+#texture-panel .tp-body {
+  padding: 8px;
+  font-size: 11px;
+  color: #000000;
+  overflow-y: auto;
+  height: calc(100% - 20px);
+}
+
+/* ===== TREASURE BOX — bottom-right ===== */
+#treasure-box {
+  position: fixed; bottom: 22px; left: 50%; right: 0;
+  z-index: 20;
+  height: 180px;
+  background: #c0c0c0;
+  border-top: 2px outset #ffffff;
+  border-left: 2px outset #ffffff;
+  display: none;
+}
+#treasure-box.open { display: block; }
+#treasure-box.maximized { top: 0; bottom: 22px; left: 0; height: auto; z-index: 25; }
+#treasure-box .tb-header {
+  background: #008080;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 11px;
+  padding: 2px 4px;
+  display: flex; align-items: center; gap: 2px;
+}
+#treasure-box .tb-header .tb-title { flex: 1; }
+#treasure-box .tb-body {
+  padding: 8px;
+  font-size: 11px;
+  color: #000000;
+  overflow-y: auto;
+  height: calc(100% - 20px);
+}
+
+/* ===== PANEL BUTTONS ===== */
+.panel-btn {
+  font-family: inherit;
+  font-size: 10px;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 0px 6px;
+  cursor: pointer;
+  color: #000000;
+  min-width: 20px;
+  text-align: center;
+}
+.panel-btn:active { border-style: inset; }
+
+/* ===== STATUS BAR — classic Windows 9x ===== */
+#status-bar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  z-index: 10;
+  height: 22px;
+  background: #c0c0c0;
+  border-top: 1px solid #ffffff;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  gap: 2px;
+  font-size: 11px;
+}
+#status-bar .sb-panel {
+  border: 1px inset #ffffff;
+  padding: 1px 6px;
+  height: 18px;
+  display: flex; align-items: center;
+}
+#status-bar .sb-label { color: #808080; margin-right: 4px; }
+#status-bar .sb-spacer { flex: 1; }
+
+/* ===== PALETTE — classic toolbar ===== */
+#palette {
+  position: fixed; top: 8px; right: 8px;
+  z-index: 10;
+  display: flex; gap: 2px;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 3px;
+}
+#palette .swatch {
+  width: 16px; height: 16px;
+  border: 1px inset #ffffff;
+  cursor: pointer;
+}
+#palette .swatch.active {
+  border: 2px outset #000080;
+}
+
+/* ===== TOOL PALETTE — exclusive tools ===== */
+#tool-palette {
+  position: fixed; top: 8px; left: 260px;
+  z-index: 10;
+  display: flex; gap: 2px;
+}
+#tool-palette .tpl-btn {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: bold;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: #000000;
+}
+#tool-palette .tpl-btn.active {
+  border-style: inset;
+  background: #a0a0a0;
+}
+#tool-palette .tpl-btn:active {
+  border-style: inset;
+}
+
+/* ===== BUTTONS — classic 3D bevel ===== */
+#btn-row {
+  position: fixed; top: 44px; right: 8px;
+  z-index: 10;
+  display: flex; gap: 4px;
+}
+.tool-btn {
+  font-family: inherit;
+  font-size: 11px;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 2px 10px;
+  cursor: pointer;
+  color: #000000;
+}
+.tool-btn:active {
+  border-style: inset;
+}
+
+/* ===== CONTROL PANEL — 90s sidebar ===== */
+#control-panel {
+  position: fixed; top: 8px; right: 8px;
+  z-index: 30;
+  width: 240px;
+  max-height: calc(100vh - 30px);
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  display: none;
+  overflow-y: auto;
+  font-size: 11px;
+}
+#control-panel.open { display: block; }
+#control-panel .cp-header {
+  background: #000080;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 11px;
+  padding: 2px 4px;
+  display: flex; align-items: center; gap: 2px;
+  position: sticky; top: 0;
+}
+#control-panel .cp-header .cp-title { flex: 1; }
+#control-panel .cp-section {
+  border-bottom: 1px solid #808080;
+  padding: 4px 6px;
+}
+#control-panel .cp-section-header {
+  font-weight: bold;
+  color: #000080;
+  margin-bottom: 3px;
+  cursor: pointer;
+}
+#control-panel .cp-row {
+  display: flex; align-items: center; gap: 4px;
+  margin-bottom: 2px;
+}
+#control-panel .cp-row label {
+  width: 70px;
+  text-align: right;
+  font-size: 10px;
+}
+#control-panel .cp-row input[type="range"] {
+  flex: 1;
+  height: 16px;
+}
+#control-panel .cp-row .cp-val {
+  width: 32px;
+  font-size: 10px;
+  text-align: left;
+}
+#control-panel .cp-row input[type="color"] {
+  width: 32px; height: 18px;
+  border: 1px inset #ffffff;
+  padding: 0;
+}
+#control-panel .cp-row input[type="checkbox"] {
+  margin: 0;
+}
+#control-panel .cp-reset {
+  font-family: inherit;
+  font-size: 10px;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: #000000;
+  margin: 4px 6px;
+}
+#control-panel .cp-reset:active { border-style: inset; }

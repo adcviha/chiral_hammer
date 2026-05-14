@@ -1,25 +1,34 @@
 # Chiral Hammer — Design Document
 
+> **Companion documents:** [SPEC.md](SPEC.md) defines the technical
+> contract (coordinate system, data model, file formats). [CLAUDE.md](CLAUDE.md)
+> holds working instructions for Claude. This document is the vision, workflow,
+> and roadmap.
+
 ## Vision
 
-A bespoke HTML tool for making **PS1-era 3D maps** for casual games. Not a Maya competitor. A small focused tool where the *entire* authoring workflow — geometry, texturing, prefabs, scattering — feels like one coherent thing instead of a pipeline you have to learn.
+A bespoke HTML tool for making **low-fidelity 3D maps** for casual games.
+Not a Maya competitor. A small focused tool where the *entire* authoring
+workflow — geometry, texturing, prefabs, scattering — feels like one coherent
+thing instead of a pipeline you have to learn.
 
-Guiding ethos: Bennett Foddy's **"be cheap to be generous"**. Tool simplicity is part of the art. Constraints (low poly, low-res textures, no fancy lighting) shape what gets made.
+Guiding ethos: Bennett Foddy's **"be cheap to be generous"**. Tool simplicity
+is part of the art. Constraints (low poly, low-res textures, no fancy lighting)
+shape what gets made.
 
 ## Aesthetic targets
 
-Eventually:
-
-- Low polygon counts
-- Textures authored at any resolution, then **crushed** to 64×64 (or 32×32, 128×128) with nearest-neighbor as a deliberate aesthetic step
-- Affine (non-perspective-corrected) texture mapping — the wobbly warp that defined PS1
-- Vertex snapping to integer pixel coordinates — the characteristic jitter
-- No bilinear filtering, no mipmaps
-- Simple vertex-color lighting or unlit
-- Optional dithering and color quantization
-- Render at ~320×240 and nearest-neighbor upscale
-
-These are **renderer-side** effects, deferred until the **authoring** workflow is solid.
+- Low polygon counts — flat-shaded or simple vertex-colored faces.
+- Textures authored at any resolution (screenshots, photo grabs), then
+  **crushed** to 64×64 (or 32×32, 128×128) with nearest-neighbor as a
+  deliberate aesthetic step.
+- No bilinear filtering, no mipmaps — textures read crisp and chunky.
+- Simple ambient + directional lighting (tunable in the control panel).
+  No PBR, no shadows, no lightmaps.
+- The "PS1 look" comes from crunched textures + low-poly geometry — not
+  from renderer tricks. Affine texture warping, vertex jitter, and 320×240
+  upscaling are de-prioritized. The authoring workflow matters more than
+  authentic PS1 hardware quirks.
 
 ## Intended workflow
 
@@ -47,6 +56,28 @@ The world is one unified system with complementary primitives.
 - Toggled per edge. Adjustable height per wall segment.
 - Walls belong to cell edges, not cell interiors. This separates "room layout" (cells) from "vertical boundaries" (walls).
 - Walls are selectable, texturable, and sliceable just like cell faces.
+
+### Cell height (simple elevation)
+- Each cell has an optional height offset (default 0). The cell quad sits at
+  Y = cellHeight.
+- A dock at height=1 above water at height=0 — no terrain brush needed.
+- Walls on edges between cells of different heights sit on the lower cell
+  and rise past the higher one, forming a retaining wall or step.
+- This is a stepping stone. When terrain sculpting lands, per-cell height
+  migrates to per-corner heights. The simple version unlocks verticality
+  now without the complexity of the full terrain brush.
+
+### Billboard quads
+- A free-standing vertical quad, not attached to any cell edge.
+- Place anywhere in 2D or 3D. Drag to size.
+- Supports transparency via the alpha channel in crushed textures.
+- Two modes: **upright billboard** (rotates around Y to face the camera,
+  for trees and signs) and **full billboard** (faces camera on all axes,
+  for particles and fire).
+- Same selection, texturing, and transform rules as cells and walls.
+- The primary use case: tree foliage. A screenshot of a tree, crushed to
+  64×64 with alpha preserved, placed on a billboard quad — instant low-fi
+  vegetation without modeling individual leaves.
 
 ### Terrain sculpting (weighted brush)
 - A push/pull brush with radius and falloff raises or lowers cell corners.
@@ -176,79 +207,149 @@ Modes:
 
 ## Roadmap
 
-### v0.7 — Polish fly controls + selection
+Version numbers use SemVer (Major.Minor.Patch). DESIGN.md lists Minor targets —
+each entry ships as X.Y.0, with bug fixes bumping the Patch digit (X.Y.1, X.Y.2...).
+
+### v0.7 — Polish fly controls + selection ✓
 - Thicker rubber-band borders for both 2D and 3D selection
 - 3D camera starts centered on the painted mesh
 - Right-click hold (not toggle) for mouselook, lower sensitivity, smooth interpolation
 - LMB drag-fill, wireframe toggle, sky-blue fog background
 - T = texture panel (scaffold), B = treasure box
 
-### v0.8 — Walls + Tool Palette
+### v0.8 — Walls + Tool Palette ✓
 - Toggle wall on a cell edge — vertical quad rising perpendicular
 - Click near edge to place/remove walls; drag to wall a perimeter
 - Adjustable height per wall segment
 - Walls selectable and texturable like cell faces
 - Orphan cleanup: removing last adjacent cell auto-deletes wall
-- **Tool palette** — exclusive tools (Paint/Fill/Wall/Select/House) via `1`–`5` keys
+- Tool palette — exclusive tools (Paint/Fill/Wall/Select/House) via `1`–`5` keys
 - Shift hold for temporary select tool
 
-### v0.9 — Selection transform
-- Move selected cells/walls
-- Uniform scale selected cells
-- Grid-snapped by default, free with modifier
+### v0.9 — Bug fixes & polish for v0.8 ✓ (shipped as v0.9.0–v0.9.2)
+- Universal LMB=place RMB=delete across all modes
+- MMB mouselook in 3D
+- Single-click wall placement uses setWall unconditionally
+- Fix catastrophic crash: computeOrthogonalWalls body dropped during pen-wall edit
+- Wall pen locks to starting grid line
+- Real-time wall placement during drag
+- Brighter 2D wall indicators
 
-### v1.0 — Extend / array on drag
+### v0.10 — Foundation: structure, undo, control panel
+- Modular file structure (~12 source files, shell-concatenated output)
+- Undo/redo via command pattern (max 100 depth)
+- Control panel sidebar (V key): lighting, fog, camera, grid tunables
+- `docs/spec.md` as technical source of truth
+
+### v0.11 — Cell height
+- Per-cell height offset (default 0). Cell quad sits at Y = cellHeight.
+- Walls use the lower adjacent cell as base Y.
+- Enables docks above water, raised platforms, split-level floors.
+
+### v0.12 — Texture import & crush
+- Clipboard paste (Ctrl+V) into texture library
+- Drag-and-drop image files
+- Crush to 64×64 (or 32×32, 128×128) via Canvas2D nearest-neighbor
+- Alpha channel preserved through crush
+- Texture library panel functional (T key)
+
+### v0.13 — Per-face texture assignment
+- Assign textures to cell faces, wall faces, and billboards
+- Per-face UV scale, offset, rotation
+- Default UV: full texture covering the face
+- Per-wall height adjustable in the UI (not just global default)
+
+### v0.14 — Billboard quads
+- Free-standing vertical quad primitive
+- Place anywhere, drag to size
+- Upright (Y-only) and full billboard modes
+- Transparent textures for tree foliage, decals, fences
+
+### v0.15 — Export format v1
+- Single `.map.json` with embedded textures (base64)
+- Collision boxes (axis-aligned hints for game runtime)
+- Trigger volumes with target map references
+- Camera anchors (preset positions for game runtime)
+
+### v0.16 — Tool refactor
+- Extract each tool to its own state machine
+- Clean event handler separation (onDown/onMove/onUp per tool)
+- No new user-facing features — internal cleanup only
+
+### v0.17 — Selection transform
+- Move selected cells, walls, and billboards
+- Uniform scale selection
+- Grid-snapped by default, free with modifier
+- "Move selection up" → roofs from floor cells
+
+### v1.0 — Treasure box
+- Save selection as named prefab → treasure box (B key)
+- Stamp prefab instances into the map
+- Per-instance position, yaw, scale, tint
+- Treasure box export/import (`.treasure.json` files)
+
+### v1.1 — Extend / array on drag
 - Modifier+drag to stamp copies of selection at grid intervals
 - Build repeating structures (floors, fences, columns) in one gesture
 
-### v1.1 — Terrain brush
+### v1.2 — Terrain brush
 - Weighted push/pull brush with radius and falloff
+- Replaces simple per-cell height with per-corner heights
 - 2D height heatmap overlay
 - Lighting responds to elevation changes
 
-### v1.2 — Slice tool + face splitting
+### v1.3 — Slice tool + face splitting
 - Draw rectangle on a face to subdivide it
 - Delete cut faces for doors/windows
 - Split preserves UVs — nudge vertices after to match geometry to texture
 
-### v2 — Texture pipeline
-- Texture library panel (T key)
-- Paste from clipboard, drop files — any resolution
-- Per-face UV: scale, offset, rotate
-- Crush to low-res as an aesthetic pass (nearest-neighbor)
-- Affine light flatten, palette quantize
-- Seamless tile helper
-- Skybox (inverted cube, per-face texture assignment)
-
-### v3 — Freeform quads
+### v2.0 — Freeform quads
 - Drop a quad at the cursor in 3D mode
 - Drag vertices to position
 - Texture and select like cell faces
 
-### v4 — Prefabs proper
-- Save selection as prefab → treasure box (B key)
-- Drag from treasure box to place instances
-- Per-instance transform + tint
-- Detach to raw geometry
-
-### v5 — Scatter brush
+### v2.1 — Scatter brush
 - Stamp / path / area modes
 - Density and jitter sliders
 
-### v6 — PS1 renderer
-- Render to small framebuffer, nearest-neighbor upscale
-- Affine texture mapping in shader
-- Vertex snap to pixel coords for jitter
-- Optional dithering pass
+### v2.2 — Skybox
+- Inverted cube at origin, camera inside
+- All 6 faces individually selectable and texturable
+- Scale arbitrarily
+
+### De-prioritized
+- **PS1 renderer effects** (affine mapping, vertex jitter, 320×240 upscale,
+  dithering) — the aesthetic comes from crunched textures + low poly, not
+  from hardware-accurate quirks. Revisit only if the look isn't reading.
 
 ## Open questions
 
-- **Cell size.** v0 uses 1×1. PS1-era interiors might want 2×2 or 4×4 so "rooms feel like rooms." Decide once walls land.
-- **Multi-floor support.** For a 2-story building, likely a second cell layer or prefabs with internal cells. TBD.
-- **Outdoor terrain.** Does the weighted terrain brush feel natural? Test when v1.1 lands.
-- **Lighting model.** PS1 was mostly vertex-colored / unlit. Ship a "bake vertex lighting" pass, or stay flat-shaded? Decide when textures arrive.
-- **Game-engine export.** Custom JSON with cell data + wall data + prefab refs? Probably. Defer.
-- **Skybox vs sky dome.** Cube is simpler and matches the low-poly aesthetic. A dome might feel more natural for outdoor scenes. Start with cube, reconsider if it feels wrong.
+- **Cell size.** Currently 1×1. May tune to 2×2 or 4×4 once heights land and
+  real scale is felt. Defer until harbor scene reveals practical needs.
+- **Multi-floor support.** Handled initially by cell height + selection
+  transform (raise a floor cell, clone it upward). Full multi-layer grid
+  deferred.
+- **Lighting model.** Sticking with Three.js standard (ambient + directional).
+  Tunable via the control panel. Vertex-color lighting is not a priority.
+- **Game runtime.** Separate HTML file that loads `.map.json` exports.
+  Collision + trigger volumes + camera anchors are editor-authored hints
+  for the runtime. The editor does not enforce physics.
+- **Skybox.** Inverted cube confirmed. Start simple, reconsider only if it
+  feels wrong in practice.
+
+## Decisions made (moved from open questions)
+
+- **PS1 renderer effects** (affine mapping, vertex jitter, 320×240 upscale,
+  dithering) are de-prioritized. The target aesthetic is "crunched textures
+  + low-poly geometry," not hardware-accurate PS1 simulation.
+- **Textures embedded as base64** in the map JSON. A 64×64 PNG is ~3-8KB.
+  At 200 textures that's under 2MB — self-contained and shareable.
+- **Treasure box is per-map** with optional export/import of `.treasure.json`
+  files. No global library unless the user builds one themselves.
+- **File-based persistence.** localStorage is auto-save scratch only.
+  The user owns `.map.json` and `.treasure.json` files on disk.
+- **No server needed.** Works from `file://` for local use. Hosted on
+  GitHub Pages for sharing.
 
 ## Non-goals
 

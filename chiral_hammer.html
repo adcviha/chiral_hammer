@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="generator" content="Notepad">
-<title>Chiral Hammer</title>
-<style>
-/* ===== CHIRAL HAMMER — 90s HTML AESTHETIC ===== */
+<title>Chiral Hammer v0.10.0</title>
+  <style>
+/* ===== CHIRAL HAMMER v0.10.0 — 90s HTML AESTHETIC ===== */
 
 * { margin: 0; padding: 0; }
 
@@ -25,7 +25,7 @@ body {
 }
 #canvas-container canvas { display: block; }
 
-/* ===== SELECTION RUBBER-BAND (screen-space) ===== */
+/* ===== SELECTION RUBBER-BAND (screen-space, 3D mode) ===== */
 #sel-box {
   position: fixed;
   border: 2px solid #008888;
@@ -227,7 +227,78 @@ body {
 .tool-btn:active {
   border-style: inset;
 }
-</style>
+
+/* ===== CONTROL PANEL — 90s sidebar ===== */
+#control-panel {
+  position: fixed; top: 8px; right: 8px;
+  z-index: 30;
+  width: 240px;
+  max-height: calc(100vh - 30px);
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  display: none;
+  overflow-y: auto;
+  font-size: 11px;
+}
+#control-panel.open { display: block; }
+#control-panel .cp-header {
+  background: #000080;
+  color: #ffffff;
+  font-weight: bold;
+  font-size: 11px;
+  padding: 2px 4px;
+  display: flex; align-items: center; gap: 2px;
+  position: sticky; top: 0;
+}
+#control-panel .cp-header .cp-title { flex: 1; }
+#control-panel .cp-section {
+  border-bottom: 1px solid #808080;
+  padding: 4px 6px;
+}
+#control-panel .cp-section-header {
+  font-weight: bold;
+  color: #000080;
+  margin-bottom: 3px;
+  cursor: pointer;
+}
+#control-panel .cp-row {
+  display: flex; align-items: center; gap: 4px;
+  margin-bottom: 2px;
+}
+#control-panel .cp-row label {
+  width: 70px;
+  text-align: right;
+  font-size: 10px;
+}
+#control-panel .cp-row input[type="range"] {
+  flex: 1;
+  height: 16px;
+}
+#control-panel .cp-row .cp-val {
+  width: 32px;
+  font-size: 10px;
+  text-align: left;
+}
+#control-panel .cp-row input[type="color"] {
+  width: 32px; height: 18px;
+  border: 1px inset #ffffff;
+  padding: 0;
+}
+#control-panel .cp-row input[type="checkbox"] {
+  margin: 0;
+}
+#control-panel .cp-reset {
+  font-family: inherit;
+  font-size: 10px;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 2px 8px;
+  cursor: pointer;
+  color: #000000;
+  margin: 4px 6px;
+}
+#control-panel .cp-reset:active { border-style: inset; }
+  </style>
 </head>
 <body bgcolor="#4a6a7a" text="#000000">
 
@@ -240,7 +311,7 @@ body {
 <div id="help-overlay">
   <div class="help-header">
     <span class="mode-label" id="help-mode">2D TILE</span>
-    <button class="help-minimize" id="btn-help-min" title="Minimize">–</button>
+    <button class="help-minimize" id="btn-help-min" title="Minimize">&ndash;</button>
   </div>
   <div id="help-keys"></div>
 </div>
@@ -289,6 +360,9 @@ body {
   </div>
 </div>
 
+<!-- CONTROL PANEL -->
+<div id="control-panel"></div>
+
 <!-- STATUS BAR -->
 <div id="status-bar">
   <div class="sb-panel">
@@ -301,7 +375,7 @@ body {
   </div>
   <div class="sb-panel">
     <span class="sb-label">CURSOR:</span>
-    <span id="sb-cursor">—</span>
+    <span id="sb-cursor">&mdash;</span>
   </div>
   <span class="sb-spacer"></span>
   <div class="sb-panel">
@@ -309,47 +383,36 @@ body {
   </div>
 </div>
 
-<!-- THREE.JS IMPORT MAP -->
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
-
-<script type="module">
-import * as THREE from 'three';
+<!-- THREE.JS CDN (global build, works from file://) -->
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script>
+// ===== state.js =====
+// ===== CHIRAL HAMMER v0.10.0 — STATE & DATA MODEL =====
+(function() {
+const C = window.Chiral = window.Chiral || {};
 
 // ===== STATE =====
 
-const state = {
+C.state = {
   mode: '2d',              // '2d' | '3d'
-  grid: new Map(),          // "x,z" -> { color: '#rrggbb' }
+  grid: new Map(),          // "x,z" -> { color, height }
   palette: [
     '#8b7355', '#6b8b6b', '#7b7b7b', '#8b6b4a',
     '#5a7a5a', '#9b8b7b', '#687868', '#a08060',
     '#4a6a5a', '#7b6b5b', '#8b8b7b', '#6b5b4b'
   ],
   activeColor: '#8b7355',
-  tbOpen: false,
-  tpOpen: false,
-  tpMaximized: false,
-  tbMaximized: false,
-  camera2D: null,
-  camera3D: null,
 
   // 3D camera state
-  camPos: new THREE.Vector3(10, 10, 10),
+  camPos: { x: 10, y: 10, z: 10 },
   camYaw: -Math.PI / 4,
   camPitch: -0.5,
   targetYaw: -Math.PI / 4,
   targetPitch: -0.5,
 
   // Mouse / input state
-  mouse: new THREE.Vector2(),
-  mouseWorld2D: new THREE.Vector3(),
+  mouse: { x: 0, y: 0 },
+  mouseWorld2D: { x: 0, y: 0, z: 0 },
   mouseDown: false,
   mouseButton: -1,
   middleDown: false,
@@ -358,236 +421,982 @@ const state = {
 
   // selection
   selecting: false,
-  selectStart: new THREE.Vector2(),
-  selectEnd: new THREE.Vector2(),
-  selectScreenStart: new THREE.Vector2(),  // screen coords for 3D selection
-  selectScreenEnd: new THREE.Vector2(),
-  selectedCells: new Set(),   // Set of "x,z" keys
+  selectStart: { x: 0, y: 0 },
+  selectEnd: { x: 0, y: 0 },
+  selectScreenStart: { x: 0, y: 0 },
+  selectScreenEnd: { x: 0, y: 0 },
+  selectedCells: new Set(),
+  selectedWalls: new Set(),
 
   // walls
-  walls: new Map(),            // "gx,gz,N|E" -> { color, height }
-  selectedWalls: new Set(),    // Set of canonical wall keys
+  walls: new Map(),          // "gx,gz,N|E" -> { color, height }
   wallHeight: 1.0,
   wallColor: '#8b7355',
 
-  // display / tool
+  // UI state
+  tpOpen: false,
+  tbOpen: false,
+  tpMaximized: false,
+  tbMaximized: false,
+  cpOpen: false,
   wireframe: false,
-  activeTool: 'tile',          // 'tile' | 'fill' | 'wall' | 'select' | 'house'
+
+  // active tool
+  activeTool: 'tile',
 
   // save flag
   dirty: false,
   saveTimeout: null,
+
+  // undo/redo
+  undoStack: [],
+  redoStack: [],
+  maxUndoDepth: 100,
+
+  // visual settings (control panel)
+  settings: {
+    ambientIntensity: 1.5,
+    dirIntensity: 2.0,
+    dirAzimuth: 45,
+    dirAltitude: 60,
+    dirColor: '#ffffff',
+    fogEnabled: true,
+    fogNear: 30,
+    fogFar: 80,
+    fogColor: '#4a6a7a',
+    fov: 60,
+    flySpeed: 5,
+    lookSensitivity: 0.25,
+    zoomSpeed: 0.05,
+    gridSize: 200,
+    gridOpacity: 1.0,
+    gridColor: '#5a6a7a',
+    pixelRatioCap: 2,
+    clearColor: '#4a6a7a',
+    defaultWallHeight: 1.0,
+    defaultWallColor: '#8b7355',
+  },
 };
 
-// ===== DOM REFS =====
+// ===== GRID MATH HELPERS =====
 
-const container = document.getElementById('canvas-container');
-const helpMode = document.getElementById('help-mode');
-const helpKeys = document.getElementById('help-keys');
-const paletteEl = document.getElementById('palette');
-const treasureBox = document.getElementById('treasure-box');
-const texturePanel = document.getElementById('texture-panel');
-const sbMode = document.getElementById('sb-mode');
-const sbCells = document.getElementById('sb-cells');
-const sbCursor = document.getElementById('sb-cursor');
-const sbSave = document.getElementById('sb-save');
-const importInput = document.getElementById('import-input');
-const selBox = document.getElementById('sel-box');
+C.gridKey = function(gx, gz) {
+  return `${gx},${gz}`;
+};
+
+C.cellExists = function(gx, gz) {
+  return C.state.grid.has(C.gridKey(gx, gz));
+};
+
+C.getCell = function(gx, gz) {
+  return C.state.grid.get(C.gridKey(gx, gz));
+};
+
+// ===== WALL MATH HELPERS =====
+
+C.wallKey = function(gx, gz, dir) {
+  return `${gx},${gz},${dir}`;
+};
+
+C.parseWallKey = function(key) {
+  const parts = key.split(',');
+  return { gx: Number(parts[0]), gz: Number(parts[1]), dir: parts[2] };
+};
+
+C.canonicalWallKey = function(gx, gz, dir) {
+  if (dir === 'S') return C.wallKey(gx, gz, 'N');
+  if (dir === 'W') return C.wallKey(gx - 1, gz, 'E');
+  return C.wallKey(gx, gz, dir);
+};
+
+C.edgeHasAdjacentCell = function(gx, gz, dir) {
+  if (dir === 'N') return C.cellExists(gx, gz) || C.cellExists(gx, gz - 1);
+  if (dir === 'E') return C.cellExists(gx, gz) || C.cellExists(gx + 1, gz);
+  return false;
+};
+
+// ===== CELL DATA MUTATIONS =====
+
+C.setCell = function(gx, gz, color) {
+  const key = C.gridKey(gx, gz);
+  const old = C.state.grid.get(key);
+  C.state.grid.set(key, { color, height: 0 });
+  C.scene.addCellMesh(gx, gz, color);
+  C.markDirty();
+  C.pushUndo({
+    type: 'setCell',
+    gx, gz,
+    oldColor: old ? old.color : null,
+    newColor: color,
+    undo: function() {
+      if (this.oldColor) {
+        C.state.grid.set(C.gridKey(this.gx, this.gz), { color: this.oldColor, height: 0 });
+        C.scene.addCellMesh(this.gx, this.gz, this.oldColor);
+      } else {
+        C.removeCellSilent(this.gx, this.gz);
+      }
+      C.markDirty();
+    },
+    redo: function() {
+      C.state.grid.set(C.gridKey(this.gx, this.gz), { color: this.newColor, height: 0 });
+      C.scene.addCellMesh(this.gx, this.gz, this.newColor);
+      C.markDirty();
+    }
+  });
+};
+
+C.setCellSilent = function(gx, gz, color) {
+  const key = C.gridKey(gx, gz);
+  C.state.grid.set(key, { color, height: 0 });
+  C.scene.addCellMesh(gx, gz, color);
+};
+
+C.removeCell = function(gx, gz) {
+  const key = C.gridKey(gx, gz);
+  const old = C.state.grid.get(key);
+  if (!old) return;
+  C.state.grid.delete(key);
+  C.scene.removeCellMesh(gx, gz);
+  C.cleanOrphanWallsAround(gx, gz);
+  C.markDirty();
+  C.pushUndo({
+    type: 'removeCell',
+    gx, gz,
+    oldColor: old.color,
+    undo: function() {
+      C.setCellSilent(this.gx, this.gz, this.oldColor);
+      C.markDirty();
+    },
+    redo: function() {
+      C.removeCellSilent(this.gx, this.gz);
+      C.markDirty();
+    }
+  });
+};
+
+C.removeCellSilent = function(gx, gz) {
+  const key = C.gridKey(gx, gz);
+  C.state.grid.delete(key);
+  C.scene.removeCellMesh(gx, gz);
+  C.cleanOrphanWallsAround(gx, gz);
+};
+
+C.clearAllCells = function() {
+  for (const key of C.state.grid.keys()) {
+    const [gx, gz] = key.split(',').map(Number);
+    C.scene.removeCellMesh(gx, gz);
+  }
+  C.state.grid.clear();
+  for (const key of C.state.walls.keys()) {
+    C.scene.removeWallMeshByKey(key);
+  }
+  C.state.walls.clear();
+  C.state.undoStack = [];
+  C.state.redoStack = [];
+  C.markDirty();
+  C.persistence.saveState();
+  C.ui.updateStatusBar();
+};
+
+// ===== WALL DATA MUTATIONS =====
+
+C.setWall = function(gx, gz, dir, color, height) {
+  const key = C.canonicalWallKey(gx, gz, dir);
+  const parsed = C.parseWallKey(key);
+  const old = C.state.walls.get(key);
+  C.state.walls.set(key, { color, height });
+  C.scene.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
+  C.markDirty();
+  C.pushUndo({
+    type: 'setWall',
+    gx: parsed.gx, gz: parsed.gz, dir: parsed.dir,
+    oldColor: old ? old.color : null,
+    oldHeight: old ? old.height : null,
+    newColor: color, newHeight: height,
+    undo: function() {
+      if (this.oldColor) {
+        C.setWallSilent(this.gx, this.gz, this.dir, this.oldColor, this.oldHeight);
+      } else {
+        C.removeWallSilent(this.gx, this.gz, this.dir);
+      }
+      C.markDirty();
+    },
+    redo: function() {
+      C.setWallSilent(this.gx, this.gz, this.dir, this.newColor, this.newHeight);
+      C.markDirty();
+    }
+  });
+};
+
+C.setWallSilent = function(gx, gz, dir, color, height) {
+  const key = C.canonicalWallKey(gx, gz, dir);
+  const parsed = C.parseWallKey(key);
+  C.state.walls.set(key, { color, height });
+  C.scene.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
+};
+
+C.removeWall = function(gx, gz, dir) {
+  const key = C.canonicalWallKey(gx, gz, dir);
+  const old = C.state.walls.get(key);
+  if (!old) return;
+  C.state.walls.delete(key);
+  C.scene.removeWallMeshByKey(key);
+  C.markDirty();
+  C.pushUndo({
+    type: 'removeWall',
+    gx, gz, dir,
+    oldColor: old.color, oldHeight: old.height,
+    undo: function() {
+      C.setWallSilent(this.gx, this.gz, this.dir, this.oldColor, this.oldHeight);
+      C.markDirty();
+    },
+    redo: function() {
+      C.removeWallSilent(this.gx, this.gz, this.dir);
+      C.markDirty();
+    }
+  });
+};
+
+C.removeWallSilent = function(gx, gz, dir) {
+  const key = C.canonicalWallKey(gx, gz, dir);
+  C.state.walls.delete(key);
+  C.scene.removeWallMeshByKey(key);
+};
+
+C.toggleWall = function(gx, gz, dir) {
+  const key = C.canonicalWallKey(gx, gz, dir);
+  if (C.state.walls.has(key)) {
+    C.removeWall(gx, gz, dir);
+  } else {
+    const parsed = C.parseWallKey(key);
+    if (C.edgeHasAdjacentCell(parsed.gx, parsed.gz, parsed.dir)) {
+      C.setWall(gx, gz, dir, C.state.wallColor, C.state.wallHeight);
+    }
+  }
+};
+
+C.cleanOrphanWallsAround = function(gx, gz) {
+  const edges = [
+    { cgx: gx,     cgz: gz,     cdir: 'N' },
+    { cgx: gx,     cgz: gz + 1, cdir: 'N' },
+    { cgx: gx,     cgz: gz,     cdir: 'E' },
+    { cgx: gx - 1, cgz: gz,     cdir: 'E' },
+  ];
+  for (const { cgx, cgz, cdir } of edges) {
+    const key = C.wallKey(cgx, cgz, cdir);
+    if (C.state.walls.has(key) && !C.edgeHasAdjacentCell(cgx, cgz, cdir)) {
+      C.scene.removeWallMeshByKey(key);
+      C.state.walls.delete(key);
+    }
+  }
+};
+
+// ===== UNDO/REDO =====
+
+C.pushUndo = function(cmd) {
+  // Skip undo recording for silent operations (used during undo/redo playback)
+  if (C._undoPlaying) return;
+  C.state.undoStack.push(cmd);
+  C.state.redoStack = [];
+  if (C.state.undoStack.length > C.state.maxUndoDepth) {
+    C.state.undoStack.shift();
+  }
+};
+
+C.undo = function() {
+  if (C.state.undoStack.length === 0) return;
+  C._undoPlaying = true;
+  const cmd = C.state.undoStack.pop();
+  cmd.undo();
+  C.state.redoStack.push(cmd);
+  C._undoPlaying = false;
+  C.ui.updateStatusBar();
+};
+
+C.redo = function() {
+  if (C.state.redoStack.length === 0) return;
+  C._undoPlaying = true;
+  const cmd = C.state.redoStack.pop();
+  cmd.redo();
+  C.state.undoStack.push(cmd);
+  C._undoPlaying = false;
+  C.ui.updateStatusBar();
+};
+
+// ===== DIRTY TRACKING (called by mutations, defined here for dependency order) =====
+
+C.markDirty = function() {
+  C.state.dirty = true;
+  C.ui.setSaveStatus('UNSAVED', '#ff0000');
+};
+
+})();
+
+// ===== scene.js =====
+// ===== CHIRAL HAMMER v0.10.0 — SCENE SETUP & RENDERING =====
+(function() {
+const C = window.Chiral;
+const s = C.state;
 
 // ===== THREE.JS SETUP =====
 
-const scene = new THREE.Scene();
+C.scene3D = new THREE.Scene();
+C.scene3D.fog = new THREE.Fog(0x4a6a7a, 30, 80);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x4a6a7a);
-scene.fog = new THREE.Fog(0x4a6a7a, 30, 80);
-container.appendChild(renderer.domElement);
+C.renderer = new THREE.WebGLRenderer({ antialias: true });
+C.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+C.renderer.setClearColor(0x4a6a7a);
 
-// 2D orthographic camera
+// ===== CAMERAS =====
+
 const frustumSize = 20;
 const aspect = window.innerWidth / window.innerHeight;
-state.camera2D = new THREE.OrthographicCamera(
-  frustumSize * aspect / -2,
-  frustumSize * aspect / 2,
-  frustumSize / 2,
-  frustumSize / -2,
+C.camera2D = new THREE.OrthographicCamera(
+  frustumSize * aspect / -2, frustumSize * aspect / 2,
+  frustumSize / 2, frustumSize / -2,
   -50, 50
 );
-state.camera2D.position.set(0, 20, 0);
-state.camera2D.lookAt(0, 0, 0);
+C.camera2D.position.set(0, 20, 0);
+C.camera2D.lookAt(0, 0, 0);
 
-// 3D perspective camera
-state.camera3D = new THREE.PerspectiveCamera(60, aspect, 0.1, 200);
-state.camera3D.position.copy(state.camPos);
-state.camera3D.lookAt(0, 0, 0);
+C.camera3D = new THREE.PerspectiveCamera(60, aspect, 0.1, 200);
+C.camera3D.position.set(s.camPos.x, s.camPos.y, s.camPos.z);
+C.camera3D.lookAt(0, 0, 0);
 
-let activeCamera = state.camera2D;
+C.activeCamera = C.camera2D;
 
-// Lights for 3D
-const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
-scene.add(ambientLight);
-const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-dirLight.position.set(10, 20, 5);
-scene.add(dirLight);
+// ===== LIGHTS =====
 
-// Grid lines
-const gridSize = 200;
-const gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x5a6a7a, 0x4a5a6a);
-gridHelper.position.y = 0.001;
-scene.add(gridHelper);
+C.ambientLight = new THREE.AmbientLight(0x404040, s.settings.ambientIntensity);
+C.scene3D.add(C.ambientLight);
+C.dirLight = new THREE.DirectionalLight(0xffffff, s.settings.dirIntensity);
+C.dirLight.position.set(10, 20, 5);
+C.scene3D.add(C.dirLight);
 
-// Group for cell meshes
-const cellGroup = new THREE.Group();
-cellGroup.name = 'cells';
-scene.add(cellGroup);
+// ===== GRID =====
 
-// Group for wall meshes
-const wallGroup = new THREE.Group();
-wallGroup.name = 'walls';
-scene.add(wallGroup);
+C.gridHelper = new THREE.GridHelper(200, 200, 0x5a6a7a, 0x4a5a6a);
+C.gridHelper.position.y = 0.001;
+C.scene3D.add(C.gridHelper);
 
-// Shared wall geometry (1x1, scaled per-wall)
-const _wallGeo = new THREE.PlaneGeometry(1, 1);
+// ===== CELL GROUP =====
 
-// Wall mesh cache: canonical key -> THREE.Mesh
-const wallMeshes = new Map();
+C.cellGroup = new THREE.Group();
+C.cellGroup.name = 'cells';
+C.scene3D.add(C.cellGroup);
 
-// 2D wall indicators (flat strips visible from top-down)
-const wall2DGroup = new THREE.Group();
-wall2DGroup.name = 'walls2d';
-wall2DGroup.renderOrder = 997;
-scene.add(wall2DGroup);
-const _wall2DGeo = new THREE.PlaneGeometry(1, 0.08);
-const wall2DMeshes = new Map();  // canonical key -> indicator Mesh
+// ===== WALL GROUP =====
 
-// Highlight quad under cursor in 2D mode
-const highlightGeo = new THREE.PlaneGeometry(1, 1);
-const highlightMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthTest: false });
-const highlightQuad = new THREE.Mesh(highlightGeo, highlightMat);
-highlightQuad.rotation.x = -Math.PI / 2;
-highlightQuad.position.y = 0.01;
-highlightQuad.visible = true;
-highlightQuad.renderOrder = 999;
-highlightQuad.material.depthTest = false;
-scene.add(highlightQuad);
+C.wallGroup = new THREE.Group();
+C.wallGroup.name = 'walls';
+C.scene3D.add(C.wallGroup);
 
-// Edge highlight for wall placement (Alt held in 2D)
-const edgeHighlightGeo = new THREE.PlaneGeometry(1, 0.08);
-const edgeHighlightMat = new THREE.MeshBasicMaterial({
-  color: 0xff8800, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthTest: false
+// ===== SHARED GEOMETRIES =====
+
+C._wallGeo = new THREE.PlaneGeometry(1, 1);
+C._cellGeo = new THREE.PlaneGeometry(1, 1);
+C._cellGeo.rotateX(-Math.PI / 2);
+
+// ===== WALL INDICATORS (2D) =====
+
+C.wall2DGroup = new THREE.Group();
+C.wall2DGroup.name = 'walls2d';
+C.wall2DGroup.renderOrder = 997;
+C.scene3D.add(C.wall2DGroup);
+C._wall2DGeo = new THREE.PlaneGeometry(1, 0.08);
+
+// ===== HIGHLIGHT QUAD =====
+
+C._highlightGeo = new THREE.PlaneGeometry(1, 1);
+C._highlightMat = new THREE.MeshBasicMaterial({
+  color: 0xffff00, transparent: true, opacity: 0.5,
+  side: THREE.DoubleSide, depthTest: false
 });
-const edgeHighlight = new THREE.Mesh(edgeHighlightGeo, edgeHighlightMat);
-edgeHighlight.position.y = 0.015;
-edgeHighlight.visible = false;
-edgeHighlight.renderOrder = 998;
-edgeHighlight.material.depthTest = false;
-scene.add(edgeHighlight);
+C.highlightQuad = new THREE.Mesh(C._highlightGeo, C._highlightMat);
+C.highlightQuad.rotation.x = -Math.PI / 2;
+C.highlightQuad.position.y = 0.01;
+C.highlightQuad.visible = true;
+C.highlightQuad.renderOrder = 999;
+C.scene3D.add(C.highlightQuad);
 
-// Selection rubber-band rectangle (2D mode, Shift+drag)
-const selRectGeo = new THREE.PlaneGeometry(1, 1);
-const selRectMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthTest: false });
-const selRect = new THREE.Mesh(selRectGeo, selRectMat);
-selRect.rotation.x = -Math.PI / 2;
-selRect.position.y = 0.02;
-selRect.visible = false;
-selRect.renderOrder = 998;
-scene.add(selRect);
-// Outline frame for rubber-band
-const selOutlineGeo = new THREE.EdgesGeometry(selRectGeo);
-const selOutlineMat = new THREE.LineBasicMaterial({ color: 0x008888, depthTest: false });
-const selOutline = new THREE.LineSegments(selOutlineGeo, selOutlineMat);
-selOutline.rotation.x = -Math.PI / 2;
-selOutline.position.y = 0.021;
-selOutline.visible = false;
-selOutline.renderOrder = 997;
-scene.add(selOutline);
+// ===== EDGE HIGHLIGHT (wall tool) =====
 
-// ===== SCRATCH OBJECTS (reused to avoid GC) =====
+C._edgeHighlightGeo = new THREE.PlaneGeometry(1, 0.08);
+C._edgeHighlightMat = new THREE.MeshBasicMaterial({
+  color: 0xff8800, transparent: true, opacity: 0.55,
+  side: THREE.DoubleSide, depthTest: false
+});
+C.edgeHighlight = new THREE.Mesh(C._edgeHighlightGeo, C._edgeHighlightMat);
+C.edgeHighlight.position.y = 0.015;
+C.edgeHighlight.visible = false;
+C.edgeHighlight.renderOrder = 998;
+C.scene3D.add(C.edgeHighlight);
 
-const _raycaster = new THREE.Raycaster();
-const _m4 = new THREE.Matrix4();
-const _ndc = new THREE.Vector3();
-const _hit = new THREE.Vector3();
-const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const _intersection = new THREE.Vector3();
-const _v3 = new THREE.Vector3();
+// ===== RUBBER-BAND RECT (2D selection) =====
 
-// ===== CELL MESH CACHE =====
-// Map "x,z" -> THREE.Mesh
+C._selRectGeo = new THREE.PlaneGeometry(1, 1);
+C._selRectMat = new THREE.MeshBasicMaterial({
+  color: 0x00ffff, transparent: true, opacity: 0.35,
+  side: THREE.DoubleSide, depthTest: false
+});
+C.selRect = new THREE.Mesh(C._selRectGeo, C._selRectMat);
+C.selRect.rotation.x = -Math.PI / 2;
+C.selRect.position.y = 0.02;
+C.selRect.visible = false;
+C.selRect.renderOrder = 998;
+C.scene3D.add(C.selRect);
 
-const cellMeshes = new Map();
+C._selOutlineGeo = new THREE.EdgesGeometry(C._selRectGeo);
+C._selOutlineMat = new THREE.LineBasicMaterial({ color: 0x008888, depthTest: false });
+C.selOutline = new THREE.LineSegments(C._selOutlineGeo, C._selOutlineMat);
+C.selOutline.rotation.x = -Math.PI / 2;
+C.selOutline.position.y = 0.021;
+C.selOutline.visible = false;
+C.selOutline.renderOrder = 997;
+C.scene3D.add(C.selOutline);
 
-// ===== GRID DATA MODEL =====
+// ===== SCRATCH OBJECTS =====
 
-function gridKey(gx, gz) {
-  return `${gx},${gz}`;
-}
+C._raycaster = new THREE.Raycaster();
+C._m4 = new THREE.Matrix4();
+C._ndc = new THREE.Vector3();
+C._hit = new THREE.Vector3();
+C._plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+C._intersection = new THREE.Vector3();
+C._v3 = new THREE.Vector3();
 
-function cellExists(gx, gz) {
-  return state.grid.has(gridKey(gx, gz));
-}
+// ===== MESH CACHES =====
 
-function getCell(gx, gz) {
-  return state.grid.get(gridKey(gx, gz));
-}
+C.cellMeshes = new Map();   // "x,z" -> THREE.Mesh
+C.wallMeshes = new Map();   // key -> THREE.Mesh
+C.wall2DMeshes = new Map(); // key -> indicator Mesh
 
-function setCell(gx, gz, color) {
-  const key = gridKey(gx, gz);
-  state.grid.set(key, { color });
-  addCellMesh(gx, gz, color);
-  markDirty();
-}
+// ===== CELL MESHES =====
 
-function removeCell(gx, gz) {
-  const key = gridKey(gx, gz);
-  state.grid.delete(key);
-  removeCellMesh(gx, gz);
-  cleanOrphanWallsAround(gx, gz);
-  markDirty();
-}
-
-function clearAllCells() {
-  for (const key of state.grid.keys()) {
-    const [gx, gz] = key.split(',').map(Number);
-    removeCellMesh(gx, gz);
+C.addCellMesh = function(gx, gz, color) {
+  const key = C.gridKey(gx, gz);
+  if (C.cellMeshes.has(key)) {
+    C.removeCellMesh(gx, gz);
   }
-  state.grid.clear();
-  for (const key of state.walls.keys()) {
-    removeWallMeshByKey(key);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
+  if (s.wireframe) mat.wireframe = true;
+  const mesh = new THREE.Mesh(C._cellGeo, mat);
+  mesh.position.set(gx + 0.5, 0.002, gz + 0.5);
+  mesh.name = 'cell-' + key;
+  C.cellGroup.add(mesh);
+  C.cellMeshes.set(key, mesh);
+};
+
+C.removeCellMesh = function(gx, gz) {
+  const key = C.gridKey(gx, gz);
+  const mesh = C.cellMeshes.get(key);
+  if (mesh) {
+    C.cellGroup.remove(mesh);
+    mesh.material.dispose();
+    C.cellMeshes.delete(key);
   }
-  state.walls.clear();
-  markDirty();
-  saveState();
-  updateStatusBar();
-}
+};
 
-// ===== WALL DATA MODEL =====
+C.updateCellColor = function(gx, gz, color) {
+  const key = C.gridKey(gx, gz);
+  const mesh = C.cellMeshes.get(key);
+  if (mesh) mesh.material.color.set(color);
+};
 
-function wallKey(gx, gz, dir) {
-  return `${gx},${gz},${dir}`;
-}
+C.updateCellSelectionVisual = function(key, selected) {
+  const mesh = C.cellMeshes.get(key);
+  if (!mesh) return;
+  if (selected) {
+    mesh.material.emissive = new THREE.Color(0x444400);
+    mesh.material.emissiveIntensity = 0.6;
+  } else {
+    mesh.material.emissive = new THREE.Color(0x000000);
+    mesh.material.emissiveIntensity = 0;
+  }
+};
 
-function parseWallKey(key) {
-  const parts = key.split(',');
-  return { gx: Number(parts[0]), gz: Number(parts[1]), dir: parts[2] };
-}
+// ===== WALL MESHES =====
 
-function canonicalWallKey(gx, gz, dir) {
-  if (dir === 'S') return wallKey(gx, gz, 'N');
-  if (dir === 'W') return wallKey(gx - 1, gz, 'E');
-  return wallKey(gx, gz, dir);
-}
+C.addWallMesh = function(gx, gz, dir, color, height) {
+  const key = C.wallKey(gx, gz, dir);
+  if (C.wallMeshes.has(key)) {
+    C.wallGroup.remove(C.wallMeshes.get(key));
+    C.wallMeshes.get(key).material.dispose();
+  }
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
+  if (s.wireframe) mat.wireframe = true;
+  const mesh = new THREE.Mesh(C._wallGeo, mat);
+  if (dir === 'N') {
+    mesh.position.set(gx + 0.5, height / 2, gz);
+    mesh.scale.set(1, height, 1);
+  } else {
+    mesh.position.set(gx + 1, height / 2, gz + 0.5);
+    mesh.rotation.y = -Math.PI / 2;
+    mesh.scale.set(1, height, 1);
+  }
+  mesh.name = 'wall-' + key;
+  C.wallGroup.add(mesh);
+  C.wallMeshes.set(key, mesh);
 
-function edgeHasAdjacentCell(gx, gz, dir) {
-  if (dir === 'N') return cellExists(gx, gz) || cellExists(gx, gz - 1);
-  if (dir === 'E') return cellExists(gx, gz) || cellExists(gx + 1, gz);
-  return false;
-}
+  // 2D indicator strip
+  if (C.wall2DMeshes.has(key)) {
+    C.wall2DGroup.remove(C.wall2DMeshes.get(key));
+    C.wall2DMeshes.get(key).material.dispose();
+  }
+  const indMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, side: THREE.DoubleSide, depthTest: false });
+  const indMesh = new THREE.Mesh(C._wall2DGeo, indMat);
+  indMesh.rotation.x = -Math.PI / 2;
+  indMesh.renderOrder = 997;
+  if (dir === 'N') {
+    indMesh.position.set(gx + 0.5, 0.015, gz);
+  } else {
+    indMesh.position.set(gx + 1, 0.015, gz + 0.5);
+    indMesh.rotation.z = -Math.PI / 2;
+  }
+  indMesh.name = 'wall2d-' + key;
+  C.wall2DGroup.add(indMesh);
+  C.wall2DMeshes.set(key, indMesh);
+};
 
-function getNearestEdge(event) {
-  const grid = getGridFromMouse(event);
+C.removeWallMeshByKey = function(key) {
+  const mesh = C.wallMeshes.get(key);
+  if (mesh) {
+    C.wallGroup.remove(mesh);
+    mesh.material.dispose();
+    C.wallMeshes.delete(key);
+  }
+  const indMesh = C.wall2DMeshes.get(key);
+  if (indMesh) {
+    C.wall2DGroup.remove(indMesh);
+    indMesh.material.dispose();
+    C.wall2DMeshes.delete(key);
+  }
+};
+
+C.updateWallSelectionVisual = function(key, selected) {
+  const mesh = C.wallMeshes.get(key);
+  if (!mesh) return;
+  if (selected) {
+    mesh.material.emissive = new THREE.Color(0xaaaa00);
+    mesh.material.emissiveIntensity = 1.0;
+  } else {
+    mesh.material.emissive = new THREE.Color(0x000000);
+    mesh.material.emissiveIntensity = 0;
+  }
+};
+
+// ===== HIGHLIGHT UPDATES =====
+
+C.updateHighlight = function(event) {
+  if (s.mode !== '2d') {
+    C.highlightQuad.visible = false;
+    C.edgeHighlight.visible = false;
+    return;
+  }
+  const tool = C.effectiveTool();
+  if (tool === 'wall') {
+    C.highlightQuad.visible = false;
+    C.updateEdgeHighlight(event);
+    return;
+  }
+  C.edgeHighlight.visible = false;
+  const grid = C.input.getGridFromMouse(event);
+  if (!grid) {
+    C.highlightQuad.visible = false;
+    return;
+  }
+  C.highlightQuad.position.set(grid.gx + 0.5, 0.01, grid.gz + 0.5);
+  C.highlightQuad.visible = true;
+  const sb = document.getElementById('sb-cursor');
+  if (sb) sb.textContent = `${grid.gx}, ${grid.gz}`;
+  s.mouseWorld2D.x = grid.worldX;
+  s.mouseWorld2D.y = 0;
+  s.mouseWorld2D.z = grid.worldZ;
+};
+
+C.updateEdgeHighlight = function(event) {
+  const edge = C.getNearestEdge(event);
+  if (!edge) {
+    C.edgeHighlight.visible = false;
+    return;
+  }
+  const { gx, gz, dir } = edge;
+  if (dir === 'N') {
+    C.edgeHighlight.position.set(gx + 0.5, 0.015, gz);
+    C.edgeHighlight.rotation.set(-Math.PI / 2, 0, 0);
+  } else {
+    C.edgeHighlight.position.set(gx + 1, 0.015, gz + 0.5);
+    C.edgeHighlight.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
+  }
+  C.edgeHighlight.visible = true;
+};
+
+// ===== RUBBER-BAND =====
+
+C.updateSelRect = function() {
+  const x1 = Math.min(s.selectStart.x, s.selectEnd.x);
+  const x2 = Math.max(s.selectStart.x, s.selectEnd.x);
+  const z1 = Math.min(s.selectStart.y, s.selectEnd.y);
+  const z2 = Math.max(s.selectStart.y, s.selectEnd.y);
+  const w = Math.max(x2 - x1, 0.1);
+  const h = Math.max(z2 - z1, 0.1);
+  C.selRect.scale.set(w, h, 1);
+  C.selRect.position.set((x1 + x2) / 2, 0.02, (z1 + z2) / 2);
+  C.selOutline.scale.set(w, h, 1);
+  C.selOutline.position.set((x1 + x2) / 2, 0.021, (z1 + z2) / 2);
+};
+
+C.showDragPreview = function(worldA, worldB) {
+  C._selRectMat.color.set(0xff8800);
+  C._selOutlineMat.color.set(0x885500);
+  C.selRect.visible = true;
+  C.selOutline.visible = true;
+  s.selectStart.x = worldA.x;
+  s.selectStart.y = worldA.z;
+  s.selectEnd.x = worldB.x;
+  s.selectEnd.y = worldB.z;
+  C.updateSelRect();
+};
+
+C.hideDragPreview = function() {
+  C.selRect.visible = false;
+  C.selOutline.visible = false;
+  C._selRectMat.color.set(0x00ffff);
+  C._selOutlineMat.color.set(0x008888);
+};
+
+// ===== SCENE APPLY =====
+
+C.applyLighting = function() {
+  const st = s.settings;
+  C.ambientLight.intensity = st.ambientIntensity;
+  C.dirLight.intensity = st.dirIntensity;
+  C.dirLight.color.set(st.dirColor);
+  const az = THREE.MathUtils.degToRad(st.dirAzimuth);
+  const alt = THREE.MathUtils.degToRad(st.dirAltitude);
+  const dist = 22;
+  C.dirLight.position.set(
+    Math.sin(az) * Math.cos(alt) * dist,
+    Math.sin(alt) * dist,
+    Math.cos(az) * Math.cos(alt) * dist
+  );
+};
+
+C.applyFog = function() {
+  const st = s.settings;
+  if (st.fogEnabled) {
+    if (!C.scene3D.fog) {
+      C.scene3D.fog = new THREE.Fog(st.fogColor, st.fogNear, st.fogFar);
+    } else {
+      C.scene3D.fog.color.set(st.fogColor);
+      C.scene3D.fog.near = st.fogNear;
+      C.scene3D.fog.far = st.fogFar;
+    }
+  } else {
+    C.scene3D.fog = null;
+  }
+};
+
+C.applyGrid = function() {
+  const st = s.settings;
+  C.gridHelper.material.color.set(st.gridColor);
+  C.gridHelper.material.opacity = st.gridOpacity;
+  C.gridHelper.material.transparent = true;
+};
+
+C.applyClearColor = function() {
+  C.renderer.setClearColor(s.settings.clearColor);
+};
+
+C.applyAllSettings = function() {
+  C.applyLighting();
+  C.applyFog();
+  C.applyGrid();
+  C.applyClearColor();
+  C.renderer.setPixelRatio(Math.min(window.devicePixelRatio, s.settings.pixelRatioCap));
+  if (s.mode === '3d') {
+    C.camera3D.fov = s.settings.fov;
+    C.camera3D.updateProjectionMatrix();
+  }
+};
+
+// ===== WIREFRAME TOGGLE =====
+
+C.toggleWireframe = function() {
+  s.wireframe = !s.wireframe;
+  for (const [key, mesh] of C.cellMeshes) {
+    mesh.material.wireframe = s.wireframe;
+    if (s.wireframe) {
+      mesh.material.color.set('#222222');
+    } else {
+      const cell = s.grid.get(key);
+      if (cell) mesh.material.color.set(cell.color);
+    }
+  }
+  for (const mesh of C.wallMeshes.values()) {
+    mesh.material.wireframe = s.wireframe;
+  }
+};
+
+// ===== RENDER =====
+
+C.clock = new THREE.Clock();
+
+C.render = function() {
+  C.renderer.render(C.scene3D, C.activeCamera);
+};
+
+})();
+
+// ===== camera.js =====
+// ===== CHIRAL HAMMER v0.10.0 — CAMERA =====
+(function() {
+const C = window.Chiral;
+const s = C.state;
+
+// ===== 2D CAMERA =====
+
+const FRUSTUM_SIZE = 20;
+
+C.update2DCameraAspect = function() {
+  const a = window.innerWidth / window.innerHeight;
+  const fs = FRUSTUM_SIZE;
+  C.camera2D.left = fs * a / -2;
+  C.camera2D.right = fs * a / 2;
+  C.camera2D.top = fs / 2;
+  C.camera2D.bottom = fs / -2;
+  C.camera2D.updateProjectionMatrix();
+};
+
+// ===== 2D PAN & ZOOM =====
+
+C.pan2D = function(dx, dy) {
+  if (s.mode !== '2d') return;
+  const sc = FRUSTUM_SIZE / (C.camera2D.zoom * window.innerHeight);
+  C.camera2D.position.x -= dx * sc;
+  C.camera2D.position.z -= dy * sc;
+};
+
+C.zoom2D = function(delta, cursorX, cursorY) {
+  if (s.mode !== '2d') return;
+  const oldZoom = C.camera2D.zoom;
+  const newZoom = Math.max(0.25, Math.min(8, oldZoom * (1 + delta * 0.001)));
+  C.camera2D.zoom = newZoom;
+  const ndcX = (cursorX / window.innerWidth) * 2 - 1;
+  const ndcY = -(cursorY / window.innerHeight) * 2 + 1;
+  const worldBefore = C._v3.set(ndcX / oldZoom, 0, ndcY / oldZoom)
+    .add(C.camera2D.position);
+  const worldAfter = C._v3.set(ndcX / newZoom, 0, ndcY / newZoom)
+    .add(C.camera2D.position);
+  C.camera2D.position.add(worldBefore.sub(worldAfter));
+  C.camera2D.updateProjectionMatrix();
+};
+
+// ===== 3D CAMERA =====
+
+C.update3DCamera = function(deltaSec) {
+  if (s.mode !== '3d') return;
+
+  const st = s.settings;
+  const speed = s.keys['ShiftLeft'] || s.keys['ShiftRight'] ? st.flySpeed * 3 : st.flySpeed;
+  const moveSpeed = speed * deltaSec;
+  const lookSensitivity = st.lookSensitivity;
+
+  // Accumulate mouse delta while RMB held
+  if (s.rightDown) {
+    s.targetYaw -= s.mouse.x * lookSensitivity * deltaSec;
+    s.targetPitch -= s.mouse.y * lookSensitivity * deltaSec;
+    s.targetPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, s.targetPitch));
+    s.mouse.x = 0;
+    s.mouse.y = 0;
+  }
+
+  // Smooth lerp
+  const lerpRate = 5;
+  const t = 1 - Math.exp(-lerpRate * deltaSec);
+  s.camYaw += (s.targetYaw - s.camYaw) * t;
+  s.camPitch += (s.targetPitch - s.camPitch) * t;
+
+  const forward = new THREE.Vector3(
+    Math.sin(s.camYaw) * Math.cos(s.camPitch),
+    Math.sin(s.camPitch),
+    Math.cos(s.camYaw) * Math.cos(s.camPitch)
+  ).normalize();
+
+  const right = new THREE.Vector3(
+    Math.sin(s.camYaw + Math.PI / 2),
+    0,
+    Math.cos(s.camYaw + Math.PI / 2)
+  ).normalize();
+
+  if (s.keys['KeyW']) s.camPos.x += forward.x * moveSpeed;
+  if (s.keys['KeyW']) s.camPos.y += forward.y * moveSpeed;
+  if (s.keys['KeyW']) s.camPos.z += forward.z * moveSpeed;
+  if (s.keys['KeyS']) s.camPos.x -= forward.x * moveSpeed;
+  if (s.keys['KeyS']) s.camPos.y -= forward.y * moveSpeed;
+  if (s.keys['KeyS']) s.camPos.z -= forward.z * moveSpeed;
+  if (s.keys['KeyA']) s.camPos.x += right.x * moveSpeed;
+  if (s.keys['KeyA']) s.camPos.z += right.z * moveSpeed;
+  if (s.keys['KeyD']) s.camPos.x -= right.x * moveSpeed;
+  if (s.keys['KeyD']) s.camPos.z -= right.z * moveSpeed;
+  if (s.keys['KeyQ']) s.camPos.y -= moveSpeed;
+  if (s.keys['KeyE']) s.camPos.y += moveSpeed;
+
+  // Arrow keys look
+  const arrowLook = 2 * deltaSec;
+  if (s.keys['ArrowLeft'])  s.targetYaw += arrowLook;
+  if (s.keys['ArrowRight']) s.targetYaw -= arrowLook;
+  if (s.keys['ArrowUp'])    s.targetPitch += arrowLook;
+  if (s.keys['ArrowDown'])  s.targetPitch -= arrowLook;
+  s.targetPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, s.targetPitch));
+
+  const lookTarget = new THREE.Vector3(
+    s.camPos.x + Math.sin(s.camYaw) * Math.cos(s.camPitch),
+    s.camPos.y + Math.sin(s.camPitch),
+    s.camPos.z + Math.cos(s.camYaw) * Math.cos(s.camPitch)
+  );
+
+  C.camera3D.position.set(s.camPos.x, s.camPos.y, s.camPos.z);
+  C.camera3D.lookAt(lookTarget);
+
+  const sb = document.getElementById('sb-cursor');
+  if (sb) sb.textContent =
+    `${s.camPos.x.toFixed(1)}, ${s.camPos.y.toFixed(1)}, ${s.camPos.z.toFixed(1)}`;
+};
+
+// ===== MODE SWITCHING =====
+
+C.getCellBounds = function() {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  if (C.cellMeshes.size === 0) return null;
+  for (const mesh of C.cellMeshes.values()) {
+    const p = mesh.position;
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+  return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, span: Math.max(maxX - minX, maxZ - minZ, 2) };
+};
+
+C.setMode = function(mode) {
+  s.mode = mode;
+  C.activeCamera = mode === '2d' ? C.camera2D : C.camera3D;
+
+  if (mode === '2d') {
+    C.highlightQuad.visible = true;
+    C.wall2DGroup.visible = true;
+    const sb = document.getElementById('sb-cursor');
+    if (sb) sb.textContent = '—';
+  } else {
+    C.highlightQuad.visible = false;
+    C.wall2DGroup.visible = false;
+
+    const bounds = C.getCellBounds();
+    if (bounds) {
+      const dist = Math.max(bounds.span * 1.2, 6);
+      const h = dist * 0.6;
+      s.camPos.x = bounds.cx + dist;
+      s.camPos.y = h;
+      s.camPos.z = bounds.cz + dist;
+      const dir = new THREE.Vector3(bounds.cx, 0, bounds.cz)
+        .sub(new THREE.Vector3(s.camPos.x, 0, s.camPos.z)).normalize();
+      s.camYaw = Math.atan2(dir.x, dir.z);
+      s.camPitch = -0.3;
+      s.targetYaw = s.camYaw;
+      s.targetPitch = s.camPitch;
+    }
+    C.camera3D.position.set(s.camPos.x, s.camPos.y, s.camPos.z);
+  }
+
+  C.ui.updateHelp();
+  C.ui.updateStatusBar();
+
+  C.renderer.setSize(window.innerWidth, window.innerHeight);
+  if (mode === '2d') {
+    C.update2DCameraAspect();
+  } else {
+    C.camera3D.aspect = window.innerWidth / window.innerHeight;
+    C.camera3D.fov = s.settings.fov;
+    C.camera3D.updateProjectionMatrix();
+  }
+};
+
+// ===== 3D ZOOM (scroll) =====
+
+C.zoom3D = function(deltaY, clientX, clientY) {
+  C._ndc.x = (clientX / window.innerWidth) * 2 - 1;
+  C._ndc.y = -(clientY / window.innerHeight) * 2 + 1;
+  C._raycaster.setFromCamera(C._ndc, C.camera3D);
+  const hit = new THREE.Vector3();
+  const didHit = C._raycaster.ray.intersectPlane(C._plane, hit);
+  const dolly = -deltaY * s.settings.zoomSpeed;
+  if (didHit) {
+    const dir = new THREE.Vector3().subVectors(hit,
+      new THREE.Vector3(s.camPos.x, s.camPos.y, s.camPos.z)).normalize();
+    s.camPos.x += dir.x * dolly;
+    s.camPos.y += dir.y * dolly;
+    s.camPos.z += dir.z * dolly;
+  } else {
+    const fwd = new THREE.Vector3(
+      Math.sin(s.camYaw) * Math.cos(s.camPitch),
+      Math.sin(s.camPitch),
+      Math.cos(s.camYaw) * Math.cos(s.camPitch)
+    ).normalize();
+    s.camPos.x += fwd.x * dolly;
+    s.camPos.y += fwd.y * dolly;
+    s.camPos.z += fwd.z * dolly;
+  }
+};
+
+})();
+
+// ===== input.js =====
+// ===== CHIRAL HAMMER v0.10.0 — INPUT NORMALIZATION =====
+(function() {
+const C = window.Chiral;
+const s = C.state;
+
+// ===== WORLD / GRID FROM MOUSE =====
+
+C.input = {};
+
+C.input.getWorldFromMouse = function(event) {
+  C._ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
+  C._ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  C._raycaster.setFromCamera(C._ndc, C.activeCamera);
+  const target = new THREE.Vector3();
+  const denom = C._raycaster.ray.direction.y;
+  if (Math.abs(denom) < 0.0001) return null;
+  const t = -C._raycaster.ray.origin.y / denom;
+  if (t < 0) return null;
+  target.copy(C._raycaster.ray.origin).addScaledVector(C._raycaster.ray.direction, t);
+  return target;
+};
+
+C.input.getGridFromMouse = function(event) {
+  C._ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
+  C._ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  C._raycaster.setFromCamera(C._ndc, C.activeCamera);
+
+  const target = new THREE.Vector3();
+  const rayOrigin = C._raycaster.ray.origin;
+  const rayDir = C._raycaster.ray.direction;
+  const denom = rayDir.y;
+  if (Math.abs(denom) < 0.0001) return null;
+  const t = -rayOrigin.y / denom;
+  if (t < 0) return null;
+  target.copy(rayOrigin).addScaledVector(rayDir, t);
+
+  const gx = Math.floor(target.x);
+  const gz = Math.floor(target.z);
+  return { gx, gz, worldX: target.x, worldZ: target.z };
+};
+
+// ===== NEAREST EDGE (wall tool) =====
+
+C.getNearestEdge = function(event) {
+  const grid = C.input.getGridFromMouse(event);
   if (!grid) return null;
   const { gx, gz, worldX, worldZ } = grid;
   const fx = worldX - gx;
@@ -604,295 +1413,250 @@ function getNearestEdge(event) {
   else if (minDist === distS) { cgx = gx;     cgz = gz + 1; cdir = 'N'; }
   else if (minDist === distW) { cgx = gx - 1; cgz = gz;     cdir = 'E'; }
   else                        { cgx = gx;     cgz = gz;     cdir = 'E'; }
-  return { gx: cgx, gz: cgz, dir: cdir, key: wallKey(cgx, cgz, cdir) };
-}
+  return { gx: cgx, gz: cgz, dir: cdir, key: C.wallKey(cgx, cgz, cdir) };
+};
 
-function updateEdgeHighlight(event) {
-  const edge = getNearestEdge(event);
-  if (!edge) {
-    edgeHighlight.visible = false;
+// ===== EFFECTIVE TOOL =====
+
+C.effectiveTool = function() {
+  if (s.keys['ShiftLeft'] || s.keys['ShiftRight']) return 'select';
+  return s.activeTool;
+};
+
+// ===== KEY HANDLERS =====
+
+C.input.onKeyDown = function(event) {
+  s.keys[event.code] = true;
+
+  if (event.code === 'Tab') {
+    event.preventDefault();
+    C.setMode(s.mode === '2d' ? '3d' : '2d');
     return;
   }
-  const { gx, gz, dir } = edge;
-  if (dir === 'N') {
-    edgeHighlight.position.set(gx + 0.5, 0.015, gz);
-    edgeHighlight.rotation.set(-Math.PI / 2, 0, 0);
-  } else {
-    edgeHighlight.position.set(gx + 1, 0.015, gz + 0.5);
-    edgeHighlight.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
-  }
-  edgeHighlight.visible = true;
-}
+  if (event.code === 'KeyT') { C.ui.toggleTexturePanel(); return; }
+  if (event.code === 'KeyG') { C.toggleWireframe(); return; }
+  if (event.code === 'KeyH') { C.ui.toggleFog(); return; }
+  if (event.code === 'KeyV') { C.ui.toggleControlPanel(); return; }
 
-function addWallMesh(gx, gz, dir, color, height) {
-  const key = wallKey(gx, gz, dir);
-  if (wallMeshes.has(key)) {
-    wallGroup.remove(wallMeshes.get(key));
-    wallMeshes.get(key).material.dispose();
+  if (event.code === 'Backspace' || event.code === 'Delete') {
+    event.preventDefault();
+    C.deleteSelectedCells();
+    return;
   }
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
-  if (state.wireframe) mat.wireframe = true;
-  const mesh = new THREE.Mesh(_wallGeo, mat);
-  if (dir === 'N') {
-    mesh.position.set(gx + 0.5, height / 2, gz);
-    mesh.scale.set(1, height, 1);
-  } else {
-    mesh.position.set(gx + 1, height / 2, gz + 0.5);
-    mesh.rotation.y = -Math.PI / 2;
-    mesh.scale.set(1, height, 1);
-  }
-  mesh.name = `wall-${key}`;
-  wallGroup.add(mesh);
-  wallMeshes.set(key, mesh);
+  if (event.code === 'KeyB') { C.ui.toggleTreasureBox(); return; }
 
-  // 2D indicator strip on the ground
-  if (wall2DMeshes.has(key)) {
-    wall2DGroup.remove(wall2DMeshes.get(key));
-    wall2DMeshes.get(key).material.dispose();
+  if (event.code === 'Escape') {
+    if (s.tpOpen) { C.ui.toggleTexturePanel(); return; }
+    if (s.tbOpen) { C.ui.toggleTreasureBox(); return; }
+    if (s.cpOpen) { C.ui.toggleControlPanel(); return; }
   }
-  const indMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, side: THREE.DoubleSide, depthTest: false });
-  const indMesh = new THREE.Mesh(_wall2DGeo, indMat);
-  indMesh.rotation.x = -Math.PI / 2;
-  indMesh.renderOrder = 997;
-  if (dir === 'N') {
-    indMesh.position.set(gx + 0.5, 0.015, gz);
-  } else {
-    indMesh.position.set(gx + 1, 0.015, gz + 0.5);
-    indMesh.rotation.z = -Math.PI / 2;
+
+  // Undo/Redo
+  if (event.code === 'KeyZ' && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    if (event.shiftKey) C.redo();
+    else C.undo();
+    return;
   }
-  indMesh.name = `wall2d-${key}`;
-  wall2DGroup.add(indMesh);
-  wall2DMeshes.set(key, indMesh);
-}
 
-function removeWallMeshByKey(key) {
-  const mesh = wallMeshes.get(key);
-  if (mesh) {
-    wallGroup.remove(mesh);
-    mesh.material.dispose();
-    wallMeshes.delete(key);
+  // Tool shortcuts
+  if (event.code === 'Digit1') { C.setActiveTool('tile'); return; }
+  if (event.code === 'Digit2') { C.setActiveTool('fill'); return; }
+  if (event.code === 'Digit3') { C.setActiveTool('wall'); return; }
+  if (event.code === 'Digit4') { C.setActiveTool('select'); return; }
+  if (event.code === 'Digit5') { C.setActiveTool('house'); return; }
+
+  // Shift for temp-select
+  if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+    C.ui.updateHelp();
+    C.ui.updateStatusBar();
   }
-  const indMesh = wall2DMeshes.get(key);
-  if (indMesh) {
-    wall2DGroup.remove(indMesh);
-    indMesh.material.dispose();
-    wall2DMeshes.delete(key);
+};
+
+C.input.onKeyUp = function(event) {
+  s.keys[event.code] = false;
+  if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+    C.ui.updateHelp();
+    C.ui.updateStatusBar();
   }
-}
+};
 
-function setWall(gx, gz, dir, color, height) {
-  const key = canonicalWallKey(gx, gz, dir);
-  const parsed = parseWallKey(key);
-  state.walls.set(key, { color, height });
-  addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
-  markDirty();
-}
+// ===== TOOL ACTIVE SETTER =====
 
-function removeWall(gx, gz, dir) {
-  const key = canonicalWallKey(gx, gz, dir);
-  state.walls.delete(key);
-  removeWallMeshByKey(key);
-  markDirty();
-}
-
-function toggleWall(gx, gz, dir) {
-  const key = canonicalWallKey(gx, gz, dir);
-  if (state.walls.has(key)) {
-    removeWall(gx, gz, dir);
-  } else {
-    const parsed = parseWallKey(key);
-    if (edgeHasAdjacentCell(parsed.gx, parsed.gz, parsed.dir)) {
-      setWall(gx, gz, dir, state.wallColor, state.wallHeight);
+C.setActiveTool = function(tool) {
+  s.activeTool = tool;
+  const buttons = document.querySelectorAll('#tool-palette .tpl-btn');
+  buttons.forEach(function(btn) {
+    if (btn.classList) {
+      btn.classList.toggle('active', btn.dataset.tool === tool);
     }
-  }
-}
-
-function cleanOrphanWallsAround(gx, gz) {
-  const edges = [
-    { cgx: gx,     cgz: gz,     cdir: 'N' },
-    { cgx: gx,     cgz: gz + 1, cdir: 'N' },
-    { cgx: gx,     cgz: gz,     cdir: 'E' },
-    { cgx: gx - 1, cgz: gz,     cdir: 'E' },
-  ];
-  for (const { cgx, cgz, cdir } of edges) {
-    const key = wallKey(cgx, cgz, cdir);
-    if (state.walls.has(key) && !edgeHasAdjacentCell(cgx, cgz, cdir)) {
-      removeWallMeshByKey(key);
-      state.walls.delete(key);
-    }
-  }
-}
-
-function updateWallSelectionVisual(key, selected) {
-  const mesh = wallMeshes.get(key);
-  if (!mesh) return;
-  if (selected) {
-    mesh.material.emissive = new THREE.Color(0xaaaa00);
-    mesh.material.emissiveIntensity = 1.0;
-  } else {
-    mesh.material.emissive = new THREE.Color(0x000000);
-    mesh.material.emissiveIntensity = 0;
-  }
-}
-
-// ===== CELL MESHES =====
-
-// Shared geometry — all cells are identical 1x1 flat planes
-const _cellGeo = new THREE.PlaneGeometry(1, 1);
-_cellGeo.rotateX(-Math.PI / 2);
-
-function addCellMesh(gx, gz, color) {
-  const key = gridKey(gx, gz);
-  if (cellMeshes.has(key)) {
-    removeCellMesh(gx, gz);
-  }
-
-  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
-  if (state.wireframe) mat.wireframe = true;
-  const mesh = new THREE.Mesh(_cellGeo, mat);
-  mesh.position.set(gx + 0.5, 0.002, gz + 0.5);
-  mesh.name = `cell-${key}`;
-
-  cellGroup.add(mesh);
-  cellMeshes.set(key, mesh);
-}
-
-function removeCellMesh(gx, gz) {
-  const key = gridKey(gx, gz);
-  const mesh = cellMeshes.get(key);
-  if (mesh) {
-    cellGroup.remove(mesh);
-    mesh.material.dispose();
-    cellMeshes.delete(key);
-  }
-}
-
-function updateCellColor(gx, gz, color) {
-  const key = gridKey(gx, gz);
-  const mesh = cellMeshes.get(key);
-  if (mesh) {
-    mesh.material.color.set(color);
-  }
-}
-
-// ===== TOOL LOGIC =====
-
-function effectiveTool() {
-  if (state.keys['ShiftLeft'] || state.keys['ShiftRight']) return 'select';
-  return state.activeTool;
-}
-
-function setActiveTool(tool) {
-  state.activeTool = tool;
-  document.querySelectorAll('#tool-palette .tpl-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tool === tool);
   });
-  updateHelp();
-  updateStatusBar();
-}
+  C.ui.updateHelp();
+  C.ui.updateStatusBar();
+};
 
-// ===== 2D INPUT =====
+})();
 
-function getWorldFromMouse(event) {
-  _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
-  _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  _raycaster.setFromCamera(_ndc, activeCamera);
-  const target = new THREE.Vector3();
-  const denom = _raycaster.ray.direction.y;
-  if (Math.abs(denom) < 0.0001) return null;
-  const t = -_raycaster.ray.origin.y / denom;
-  if (t < 0) return null;
-  target.copy(_raycaster.ray.origin).addScaledVector(_raycaster.ray.direction, t);
-  return target;
-}
+// ===== tools/tile.js =====
+// ===== CHIRAL HAMMER v0.10.0 — TOOL: TILE =====
+// Single-click paint (LMB) / erase (RMB). Universal across 2D and 3D.
+(function() {
+const C = window.Chiral;
+const s = C.state;
 
-function getGridFromMouse(event) {
-  _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
-  _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+C.tools = C.tools || {};
 
-  _raycaster.setFromCamera(_ndc, activeCamera);
-
-  const target = new THREE.Vector3();
-  const rayOrigin = _raycaster.ray.origin;
-  const rayDir = _raycaster.ray.direction;
-
-  const denom = rayDir.y;
-  if (Math.abs(denom) < 0.0001) return null;
-  const t = -rayOrigin.y / denom;
-  if (t < 0) return null;
-
-  target.copy(rayOrigin).addScaledVector(rayDir, t);
-
-  const gx = Math.floor(target.x);
-  const gz = Math.floor(target.z);
-  return { gx, gz, worldX: target.x, worldZ: target.z };
-}
-
-function tileAtMouse(event) {
-  const grid = getGridFromMouse(event);
-  if (!grid) return;
-  if (state.mode !== '2d') return;
-
-  if (event.buttons & 1) {
-    const existing = getCell(grid.gx, grid.gz);
-    if (!existing || existing.color !== state.activeColor) {
-      setCell(grid.gx, grid.gz, state.activeColor);
-      updateStatusBar();
+C.tools.tile = {
+  onDown: function(event) {
+    if (event.button === 0) {
+      // LMB — place cell
+      if (s.mode === '2d') {
+        const grid = C.input.getGridFromMouse(event);
+        if (grid) {
+          const existing = C.getCell(grid.gx, grid.gz);
+          if (!existing || existing.color !== s.activeColor) {
+            C.setCell(grid.gx, grid.gz, s.activeColor);
+            C.ui.updateStatusBar();
+          }
+        }
+      } else {
+        const world = C.input.getWorldFromMouse(event);
+        if (world) {
+          const gx = Math.floor(world.x);
+          const gz = Math.floor(world.z);
+          const existing = C.getCell(gx, gz);
+          if (!existing || existing.color !== s.activeColor) {
+            C.setCell(gx, gz, s.activeColor);
+            C.ui.updateStatusBar();
+          }
+        }
+      }
+    } else if (event.button === 2) {
+      // RMB — erase cell
+      const grid = C.input.getGridFromMouse(event);
+      if (grid && C.cellExists(grid.gx, grid.gz)) {
+        C.removeCell(grid.gx, grid.gz);
+        C.ui.updateStatusBar();
+      }
     }
-  } else if (event.buttons & 2) {
-    if (cellExists(grid.gx, grid.gz)) {
-      removeCell(grid.gx, grid.gz);
-      updateStatusBar();
+  },
+
+  onMove: function(event) {
+    if (s.mode === '2d') {
+      C.updateHighlight(event);
     }
-  }
-}
+    if (s.mouseDown && s.mouseButton === 0 && (event.buttons & 1)) {
+      if (s.mode === '2d') {
+        const grid = C.input.getGridFromMouse(event);
+        if (grid) {
+          const existing = C.getCell(grid.gx, grid.gz);
+          if (!existing || existing.color !== s.activeColor) {
+            C.setCell(grid.gx, grid.gz, s.activeColor);
+            C.ui.updateStatusBar();
+          }
+        }
+      } else {
+        const world = C.input.getWorldFromMouse(event);
+        if (world) {
+          const gx = Math.floor(world.x);
+          const gz = Math.floor(world.z);
+          const existing = C.getCell(gx, gz);
+          if (!existing || existing.color !== s.activeColor) {
+            C.setCell(gx, gz, s.activeColor);
+            C.ui.updateStatusBar();
+          }
+        }
+      }
+    }
+    if (s.mouseDown && s.mouseButton === 2 && (event.buttons & 2)) {
+      const grid = C.input.getGridFromMouse(event);
+      if (grid && C.cellExists(grid.gx, grid.gz)) {
+        C.removeCell(grid.gx, grid.gz);
+        C.ui.updateStatusBar();
+      }
+    }
+  },
 
-function updateHighlight(event) {
-  if (state.mode !== '2d') {
-    highlightQuad.visible = false;
-    edgeHighlight.visible = false;
-    return;
+  onUp: function(event) {
+    // no commit needed — tile is atomic per-cell
   }
-  const tool = effectiveTool();
-  if (tool === 'wall') {
-    highlightQuad.visible = false;
-    updateEdgeHighlight(event);
-    return;
-  }
-  edgeHighlight.visible = false;
-  const grid = getGridFromMouse(event);
-  if (!grid) {
-    highlightQuad.visible = false;
-    return;
-  }
-  highlightQuad.position.set(grid.gx + 0.5, 0.01, grid.gz + 0.5);
-  highlightQuad.visible = true;
+};
 
-  sbCursor.textContent = `${grid.gx}, ${grid.gz}`;
-  state.mouseWorld2D.set(grid.worldX, 0, grid.worldZ);
-}
+})();
 
-function fillRect(worldA, worldB) {
-  const x1 = Math.min(worldA.x, worldB.x);
-  const x2 = Math.max(worldA.x, worldB.x);
-  const z1 = Math.min(worldA.z, worldB.z);
-  const z2 = Math.max(worldA.z, worldB.z);
-  const gx1 = Math.floor(x1);
-  const gx2 = Math.floor(x2 - 0.001);
-  const gz1 = Math.floor(z1);
-  const gz2 = Math.floor(z2 - 0.001);
-  for (let gx = gx1; gx <= gx2; gx++) {
-    for (let gz = gz1; gz <= gz2; gz++) {
-      const existing = getCell(gx, gz);
-      if (!existing || existing.color !== state.activeColor) {
-        setCell(gx, gz, state.activeColor);
+// ===== tools/fill.js =====
+// ===== CHIRAL HAMMER v0.10.0 — TOOL: FILL =====
+// Drag-rect fill. Atomic on mouseup. LMB fill, RMB erase.
+(function() {
+const C = window.Chiral;
+const s = C.state;
+
+C.tools = C.tools || {};
+
+C.tools.fill = {
+  onDown: function(event) {
+    if (event.button === 0) {
+      s._dragStart = C.input.getWorldFromMouse(event);
+      // Also place the starting cell immediately
+      if (s._dragStart) {
+        const gx = Math.floor(s._dragStart.x);
+        const gz = Math.floor(s._dragStart.z);
+        const existing = C.getCell(gx, gz);
+        if (!existing || existing.color !== s.activeColor) {
+          C.setCell(gx, gz, s.activeColor);
+          C.ui.updateStatusBar();
+        }
+      }
+    } else if (event.button === 2) {
+      s._dragStart = C.input.getWorldFromMouse(event);
+      if (s.mode === '2d') {
+        const grid = C.input.getGridFromMouse(event);
+        if (grid && C.cellExists(grid.gx, grid.gz)) {
+          C.removeCell(grid.gx, grid.gz);
+          C.ui.updateStatusBar();
+        }
+      }
+    }
+  },
+
+  onMove: function(event) {
+    if (s.mode === '2d') {
+      C.updateHighlight(event);
+    } else {
+      C.edgeHighlight.visible = false;
+    }
+    if (s.mouseDown && s.mouseButton === 0 && (event.buttons & 1) && s._dragStart) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) {
+        C.showDragPreview(s._dragStart, world);
+      }
+    }
+    if (s.mouseDown && s.mouseButton === 2 && (event.buttons & 2) && s._dragStart) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) {
+        C.showDragPreview(s._dragStart, world);
+      }
+    }
+  },
+
+  onUp: function(event) {
+    C.hideDragPreview();
+    if (s._dragStart) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) {
+        if (s.mouseButton === 0) {
+          C.fillRect(s._dragStart, world);
+        } else if (s.mouseButton === 2) {
+          C.eraseRect(s._dragStart, world);
+        }
       }
     }
   }
-  updateStatusBar();
-}
+};
 
-function eraseRect(worldA, worldB) {
+// ===== FILL RECT =====
+
+C.fillRect = function(worldA, worldB) {
   const x1 = Math.min(worldA.x, worldB.x);
   const x2 = Math.max(worldA.x, worldB.x);
   const z1 = Math.min(worldA.z, worldB.z);
@@ -901,17 +1665,47 @@ function eraseRect(worldA, worldB) {
   const gx2 = Math.floor(x2 - 0.001);
   const gz1 = Math.floor(z1);
   const gz2 = Math.floor(z2 - 0.001);
+  // Defer undo — push one compound undo for the whole rect
+  const oldCells = [];
   for (let gx = gx1; gx <= gx2; gx++) {
     for (let gz = gz1; gz <= gz2; gz++) {
-      if (cellExists(gx, gz)) {
-        removeCell(gx, gz);
+      const existing = C.getCell(gx, gz);
+      oldCells.push({ gx, gz, oldColor: existing ? existing.color : null });
+      if (!existing || existing.color !== s.activeColor) {
+        C.setCellSilent(gx, gz, s.activeColor);
       }
     }
   }
-  updateStatusBar();
-}
+  C.markDirty();
+  C.pushUndo({
+    type: 'fillRect',
+    oldCells: oldCells,
+    newColor: s.activeColor,
+    undo: function() {
+      C._undoPlaying = true;
+      for (const oc of this.oldCells) {
+        if (oc.oldColor) {
+          C.setCellSilent(oc.gx, oc.gz, oc.oldColor);
+        } else {
+          C.removeCellSilent(oc.gx, oc.gz);
+        }
+      }
+      C._undoPlaying = false;
+      C.markDirty();
+    },
+    redo: function() {
+      C._undoPlaying = true;
+      for (const oc of this.oldCells) {
+        C.setCellSilent(oc.gx, oc.gz, this.newColor);
+      }
+      C._undoPlaying = false;
+      C.markDirty();
+    }
+  });
+  C.ui.updateStatusBar();
+};
 
-function wallRect(worldA, worldB) {
+C.eraseRect = function(worldA, worldB) {
   const x1 = Math.min(worldA.x, worldB.x);
   const x2 = Math.max(worldA.x, worldB.x);
   const z1 = Math.min(worldA.z, worldB.z);
@@ -920,24 +1714,144 @@ function wallRect(worldA, worldB) {
   const gx2 = Math.floor(x2 - 0.001);
   const gz1 = Math.floor(z1);
   const gz2 = Math.floor(z2 - 0.001);
-  // Top + bottom perimeter (N walls)
+  const oldCells = [];
   for (let gx = gx1; gx <= gx2; gx++) {
-    setWall(gx, gz2 + 1, 'N', state.wallColor, state.wallHeight);
-    setWall(gx, gz1, 'N', state.wallColor, state.wallHeight);
+    for (let gz = gz1; gz <= gz2; gz++) {
+      if (C.cellExists(gx, gz)) {
+        oldCells.push({ gx, gz, oldColor: C.getCell(gx, gz).color });
+        C.removeCellSilent(gx, gz);
+      }
+    }
   }
-  // Left + right perimeter (E walls)
-  for (let gz = gz1; gz <= gz2; gz++) {
-    setWall(gx1 - 1, gz, 'E', state.wallColor, state.wallHeight);
-    setWall(gx2, gz, 'E', state.wallColor, state.wallHeight);
-  }
-  updateStatusBar();
-}
+  if (oldCells.length === 0) return;
+  C.markDirty();
+  C.pushUndo({
+    type: 'eraseRect',
+    oldCells: oldCells,
+    undo: function() {
+      C._undoPlaying = true;
+      for (const oc of this.oldCells) {
+        C.setCellSilent(oc.gx, oc.gz, oc.oldColor);
+      }
+      C._undoPlaying = false;
+      C.markDirty();
+    },
+    redo: function() {
+      C._undoPlaying = true;
+      for (const oc of this.oldCells) {
+        C.removeCellSilent(oc.gx, oc.gz);
+      }
+      C._undoPlaying = false;
+      C.markDirty();
+    }
+  });
+  C.ui.updateStatusBar();
+};
 
-// Pen wall path: single grid line in the locked direction
-function computePenWalls(startGX, startGZ, dir, worldEnd) {
+})();
+
+// ===== tools/wall.js =====
+// ===== CHIRAL HAMMER v0.10.0 — TOOL: WALL =====
+// Click edge to toggle. Drag to pen a line along the locked grid direction.
+(function() {
+const C = window.Chiral;
+const s = C.state;
+
+C.tools = C.tools || {};
+
+C.tools.wall = {
+  onDown: function(event) {
+    if (event.button === 0) {
+      s._dragStart = C.input.getWorldFromMouse(event);
+      s._dragWallKeys = new Set();
+      const edge = C.getNearestEdge(event);
+      if (edge) {
+        s._dragEdgeDir = edge.dir;
+        s._dragEdgeGX = edge.gx;
+        s._dragEdgeGZ = edge.gz;
+      }
+    } else if (event.button === 2) {
+      // RMB — delete wall on nearest edge
+      s._dragStart = C.input.getWorldFromMouse(event);
+      const edge = C.getNearestEdge(event);
+      if (edge) {
+        s._dragEdgeDir = edge.dir;
+        s._dragEdgeGX = edge.gx;
+        s._dragEdgeGZ = edge.gz;
+        const key = C.canonicalWallKey(edge.gx, edge.gz, edge.dir);
+        if (s.walls.has(key)) {
+          C.removeWall(edge.gx, edge.gz, edge.dir);
+          C.ui.updateStatusBar();
+        }
+      }
+    }
+  },
+
+  onMove: function(event) {
+    if (s.mode === '2d') C.updateHighlight(event);
+    else C.updateEdgeHighlight(event);
+
+    // LMB drag — real-time wall placement along locked direction
+    if (s.mouseDown && s.mouseButton === 0 && (event.buttons & 1) && s._dragStart && s._dragEdgeDir) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) {
+        // Clear previous drag walls
+        for (const key of s._dragWallKeys) {
+          C.scene.removeWallMeshByKey(key);
+          s.walls.delete(key);
+        }
+        s._dragWallKeys.clear();
+        const walls = C.computePenWalls(s._dragEdgeGX, s._dragEdgeGZ, s._dragEdgeDir, world);
+        for (const w of walls) {
+          C.setWallSilent(w.gx, w.gz, w.dir, s.wallColor, s.wallHeight);
+          s._dragWallKeys.add(C.canonicalWallKey(w.gx, w.gz, w.dir));
+        }
+        C.ui.updateStatusBar();
+      }
+    }
+
+    // RMB drag — real-time wall deletion
+    if (s.mouseDown && s.mouseButton === 2 && (event.buttons & 2) && s._dragStart && s._dragEdgeDir) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) {
+        const walls = C.computePenWalls(s._dragEdgeGX, s._dragEdgeGZ, s._dragEdgeDir, world);
+        for (const w of walls) {
+          const key = C.canonicalWallKey(w.gx, w.gz, w.dir);
+          if (s.walls.has(key)) C.removeWall(w.gx, w.gz, w.dir);
+        }
+        C.ui.updateStatusBar();
+      }
+    }
+  },
+
+  onUp: function(event) {
+    // Small click (no significant drag) = toggle single edge
+    if (s._dragStart && s.mouseButton === 0) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) {
+        const dx = world.x - s._dragStart.x;
+        const dz = world.z - s._dragStart.z;
+        if (Math.abs(dx) < 0.3 && Math.abs(dz) < 0.3) {
+          const edge = C.getNearestEdge(event);
+          if (edge) {
+            C.setWall(edge.gx, edge.gz, edge.dir, s.wallColor, s.wallHeight);
+            C.ui.updateStatusBar();
+          }
+        }
+      }
+    }
+    s._dragWallKeys = null;
+    s._dragEdgeDir = null;
+    s._dragEdgeGX = null;
+    s._dragEdgeGZ = null;
+  }
+};
+
+// ===== PEN WALL COMPUTATION =====
+
+C.computePenWalls = function(startGX, startGZ, dir, worldEnd) {
   const walls = [];
   if (dir === 'N') {
-    // Horizontal line at z = startGZ
     const gxEnd = Math.floor(worldEnd.x);
     const gxMin = Math.min(startGX, gxEnd);
     const gxMax = Math.max(startGX, gxEnd);
@@ -945,7 +1859,6 @@ function computePenWalls(startGX, startGZ, dir, worldEnd) {
       walls.push({ gx, gz: startGZ, dir: 'N' });
     }
   } else {
-    // Vertical line at x = startGX + 1
     const gzEnd = Math.floor(worldEnd.z);
     const gzMin = Math.min(startGZ, gzEnd);
     const gzMax = Math.max(startGZ, gzEnd);
@@ -954,10 +1867,11 @@ function computePenWalls(startGX, startGZ, dir, worldEnd) {
     }
   }
   return walls;
-}
+};
 
-// Compute orthogonal wall path: returns array of {gx, gz, dir}
-function computeOrthogonalWalls(worldA, worldB) {
+// ===== ORTHOGONAL WALL PATH =====
+
+C.computeOrthogonalWalls = function(worldA, worldB) {
   const walls = [];
   const gx1 = Math.floor(worldA.x);
   const gz1 = Math.floor(worldA.z);
@@ -971,7 +1885,6 @@ function computeOrthogonalWalls(worldA, worldB) {
       walls.push({ gx, gz: gz1, dir: 'N' });
     }
   }
-
   if (gz2 !== gz1) {
     const gzMin = Math.min(gz1, gz2);
     const gzMax = Math.max(gz1, gz2);
@@ -979,1011 +1892,466 @@ function computeOrthogonalWalls(worldA, worldB) {
       walls.push({ gx: gx2 - 1, gz, dir: 'E' });
     }
   }
-
   return walls;
-}
+};
 
-// Orthogonal wall path: L-shaped from start to end, horizontal-first
-function orthogonalWallPath(worldA, worldB) {
-  const walls = computeOrthogonalWalls(worldA, worldB);
-  for (const w of walls) {
-    setWall(w.gx, w.gz, w.dir, state.wallColor, state.wallHeight);
+})();
+
+// ===== tools/select.js =====
+// ===== CHIRAL HAMMER v0.10.0 — TOOL: SELECT =====
+// Rubber-band drag, Shift+click toggle, click-to-empty deselect, Delete.
+(function() {
+const C = window.Chiral;
+const s = C.state;
+
+C.tools = C.tools || {};
+
+C.tools.select = {
+  onDown: function(event) {
+    if (event.button === 0) {
+      if (s.mode === '2d') {
+        const world = C.input.getWorldFromMouse(event);
+        if (world) {
+          s.selecting = true;
+          s.selectStart.x = world.x;
+          s.selectStart.y = world.z;
+          s.selectEnd.x = world.x;
+          s.selectEnd.y = world.z;
+          C.updateSelRect();
+          C.selRect.visible = true;
+          C.selOutline.visible = true;
+        }
+      } else {
+        s.selecting = true;
+        s.selectScreenStart.x = event.clientX;
+        s.selectScreenStart.y = event.clientY;
+        s.selectScreenEnd.x = event.clientX;
+        s.selectScreenEnd.y = event.clientY;
+        const sb = document.getElementById('sel-box');
+        if (sb) {
+          sb.style.display = 'block';
+          sb.style.left = event.clientX + 'px';
+          sb.style.top = event.clientY + 'px';
+          sb.style.width = '0px';
+          sb.style.height = '0px';
+        }
+      }
+    } else if (event.button === 2) {
+      // RMB — delete under cursor (2D or 3D)
+      if (s.mode === '2d') {
+        s._dragStart = C.input.getWorldFromMouse(event);
+        const grid = C.input.getGridFromMouse(event);
+        if (grid && C.cellExists(grid.gx, grid.gz)) {
+          C.removeCell(grid.gx, grid.gz);
+          C.ui.updateStatusBar();
+        } else {
+          const edge = C.getNearestEdge(event);
+          if (edge) {
+            const key = C.canonicalWallKey(edge.gx, edge.gz, edge.dir);
+            if (s.walls.has(key)) {
+              C.removeWall(edge.gx, edge.gz, edge.dir);
+              C.ui.updateStatusBar();
+            }
+          }
+        }
+      } else {
+        C.deleteAtMouse3D(event);
+      }
+    }
+  },
+
+  onMove: function(event) {
+    if (s.mode === '2d') {
+      C.updateHighlight(event);
+      if (s.selecting) {
+        const world = C.input.getWorldFromMouse(event);
+        if (world) {
+          s.selectEnd.x = world.x;
+          s.selectEnd.y = world.z;
+          C.updateSelRect();
+        }
+        return;
+      }
+    } else {
+      C.edgeHighlight.visible = false;
+      if (s.selecting) {
+        s.selectScreenEnd.x = event.clientX;
+        s.selectScreenEnd.y = event.clientY;
+        const x1 = Math.min(s.selectScreenStart.x, s.selectScreenEnd.x);
+        const y1 = Math.min(s.selectScreenStart.y, s.selectScreenEnd.y);
+        const x2 = Math.max(s.selectScreenStart.x, s.selectScreenEnd.x);
+        const y2 = Math.max(s.selectScreenStart.y, s.selectScreenEnd.y);
+        const sb = document.getElementById('sel-box');
+        if (sb) {
+          sb.style.left = x1 + 'px';
+          sb.style.top = y1 + 'px';
+          sb.style.width = (x2 - x1) + 'px';
+          sb.style.height = (y2 - y1) + 'px';
+        }
+      }
+    }
+
+    // RMB drag erase (2D only)
+    if (s.mode === '2d' && s.mouseDown && s.mouseButton === 2 && (event.buttons & 2) && s._dragStart) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) C.eraseRect(s._dragStart, world);
+    }
+  },
+
+  onUp: function(event) {
+    if (s.selecting) {
+      if (s.mode === '3d') {
+        const dx = Math.abs(s.selectScreenEnd.x - s.selectScreenStart.x);
+        const dy = Math.abs(s.selectScreenEnd.y - s.selectScreenStart.y);
+        if (dx < 3 && dy < 3) {
+          C.toggleSelectAtMouse3D(event);
+        } else {
+          C.commitSelection3D();
+        }
+        const sb = document.getElementById('sel-box');
+        if (sb) sb.style.display = 'none';
+      } else {
+        const dx = Math.abs(s.selectEnd.x - s.selectStart.x);
+        const dy = Math.abs(s.selectEnd.y - s.selectStart.y);
+        if (dx < 0.2 && dy < 0.2) {
+          C.toggleSelectAtMouse2D(event);
+        } else {
+          C.commitSelection();
+        }
+        C.selRect.visible = false;
+        C.selOutline.visible = false;
+      }
+      s.selecting = false;
+    }
   }
-  updateStatusBar();
-}
+};
 
-// ===== SELECTION =====
+// ===== SELECTION COMMIT =====
 
-function updateSelRect() {
-  const x1 = Math.min(state.selectStart.x, state.selectEnd.x);
-  const x2 = Math.max(state.selectStart.x, state.selectEnd.x);
-  const z1 = Math.min(state.selectStart.y, state.selectEnd.y);
-  const z2 = Math.max(state.selectStart.y, state.selectEnd.y);
+C.commitSelection = function() {
+  const x1 = Math.min(s.selectStart.x, s.selectEnd.x);
+  const x2 = Math.max(s.selectStart.x, s.selectEnd.x);
+  const z1 = Math.min(s.selectStart.y, s.selectEnd.y);
+  const z2 = Math.max(s.selectStart.y, s.selectEnd.y);
 
-  const w = Math.max(x2 - x1, 0.1);
-  const h = Math.max(z2 - z1, 0.1);
-  selRect.scale.set(w, h, 1);
-  selRect.position.set((x1 + x2) / 2, 0.02, (z1 + z2) / 2);
-  selOutline.scale.set(w, h, 1);
-  selOutline.position.set((x1 + x2) / 2, 0.021, (z1 + z2) / 2);
-}
+  for (const key of s.selectedCells) C.updateCellSelectionVisual(key, false);
+  s.selectedCells.clear();
 
-function showDragPreview(worldA, worldB) {
-  selRectMat.color.set(0xff8800);
-  selOutlineMat.color.set(0x885500);
-  selRect.visible = true;
-  selOutline.visible = true;
-  state.selectStart.set(worldA.x, worldA.z);
-  state.selectEnd.set(worldB.x, worldB.z);
-  updateSelRect();
-}
-
-function hideDragPreview() {
-  selRect.visible = false;
-  selOutline.visible = false;
-  selRectMat.color.set(0x00ffff);
-  selOutlineMat.color.set(0x008888);
-}
-
-function commitSelection() {
-  const x1 = Math.min(state.selectStart.x, state.selectEnd.x);
-  const x2 = Math.max(state.selectStart.x, state.selectEnd.x);
-  const z1 = Math.min(state.selectStart.y, state.selectEnd.y);
-  const z2 = Math.max(state.selectStart.y, state.selectEnd.y);
-
-  // Deselect previous
-  for (const key of state.selectedCells) {
-    updateCellSelectionVisual(key, false);
-  }
-  state.selectedCells.clear();
-
-  // Select cells whose center falls within the world rectangle
   const gx1 = Math.floor(x1);
   const gx2 = Math.floor(x2 - 0.001);
   const gz1 = Math.floor(z1);
   const gz2 = Math.floor(z2 - 0.001);
   for (let gx = gx1; gx <= gx2; gx++) {
     for (let gz = gz1; gz <= gz2; gz++) {
-      const key = gridKey(gx, gz);
-      if (state.grid.has(key)) {
-        state.selectedCells.add(key);
-        updateCellSelectionVisual(key, true);
+      const key = C.gridKey(gx, gz);
+      if (s.grid.has(key)) {
+        s.selectedCells.add(key);
+        C.updateCellSelectionVisual(key, true);
       }
     }
   }
 
-  // Select walls whose midpoint falls within the rectangle
-  for (const [key, wall] of state.walls) {
-    const { gx, gz, dir } = parseWallKey(key);
+  for (const [key, wall] of s.walls) {
+    const { gx, gz, dir } = C.parseWallKey(key);
     const mx = dir === 'N' ? gx + 0.5 : gx + 1;
     const mz = dir === 'N' ? gz : gz + 0.5;
     if (mx >= x1 && mx <= x2 && mz >= z1 && mz <= z2) {
-      state.selectedWalls.add(key);
-      updateWallSelectionVisual(key, true);
+      s.selectedWalls.add(key);
+      C.updateWallSelectionVisual(key, true);
     }
   }
-}
+};
 
-function commitSelection3D() {
-  const x1 = Math.min(state.selectScreenStart.x, state.selectScreenEnd.x);
-  const y1 = Math.min(state.selectScreenStart.y, state.selectScreenEnd.y);
-  const x2 = Math.max(state.selectScreenStart.x, state.selectScreenEnd.x);
-  const y2 = Math.max(state.selectScreenStart.y, state.selectScreenEnd.y);
-
+C.commitSelection3D = function() {
+  const x1 = Math.min(s.selectScreenStart.x, s.selectScreenEnd.x);
+  const y1 = Math.min(s.selectScreenStart.y, s.selectScreenEnd.y);
+  const x2 = Math.max(s.selectScreenStart.x, s.selectScreenEnd.x);
+  const y2 = Math.max(s.selectScreenStart.y, s.selectScreenEnd.y);
   if (x2 - x1 < 3 && y2 - y1 < 3) return;
 
-  // Deselect previous
-  for (const key of state.selectedCells) {
-    updateCellSelectionVisual(key, false);
-  }
-  state.selectedCells.clear();
+  for (const key of s.selectedCells) C.updateCellSelectionVisual(key, false);
+  s.selectedCells.clear();
 
-  const halfW = window.innerWidth / 2;
-  const halfH = window.innerHeight / 2;
-
-  for (const [key, mesh] of cellMeshes) {
-    const wp = mesh.position.clone().project(state.camera3D);
-    if (wp.z > 1) continue; // behind camera
-
-    const sx = (wp.x * 0.5 + 0.5) * window.innerWidth;
-    const sy = (-wp.y * 0.5 + 0.5) * window.innerHeight;
-
-    if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
-      state.selectedCells.add(key);
-      updateCellSelectionVisual(key, true);
-    }
-  }
-
-  for (const [key, mesh] of wallMeshes) {
-    const wp = mesh.position.clone().project(state.camera3D);
+  for (const [key, mesh] of C.cellMeshes) {
+    const wp = mesh.position.clone().project(C.camera3D);
     if (wp.z > 1) continue;
     const sx = (wp.x * 0.5 + 0.5) * window.innerWidth;
     const sy = (-wp.y * 0.5 + 0.5) * window.innerHeight;
     if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
-      state.selectedWalls.add(key);
-      updateWallSelectionVisual(key, true);
+      s.selectedCells.add(key);
+      C.updateCellSelectionVisual(key, true);
     }
   }
-}
 
-function clearSelection() {
-  for (const key of state.selectedCells) {
-    updateCellSelectionVisual(key, false);
+  for (const [key, mesh] of C.wallMeshes) {
+    const wp = mesh.position.clone().project(C.camera3D);
+    if (wp.z > 1) continue;
+    const sx = (wp.x * 0.5 + 0.5) * window.innerWidth;
+    const sy = (-wp.y * 0.5 + 0.5) * window.innerHeight;
+    if (sx >= x1 && sx <= x2 && sy >= y1 && sy <= y2) {
+      s.selectedWalls.add(key);
+      C.updateWallSelectionVisual(key, true);
+    }
   }
-  state.selectedCells.clear();
-  for (const key of state.selectedWalls) {
-    updateWallSelectionVisual(key, false);
-  }
-  state.selectedWalls.clear();
-}
+};
 
-function toggleSelectAtMouse2D(event) {
-  // Check cell under cursor
-  const grid = getGridFromMouse(event);
-  if (grid && cellExists(grid.gx, grid.gz)) {
-    const key = gridKey(grid.gx, grid.gz);
-    if (state.selectedCells.has(key)) {
-      state.selectedCells.delete(key);
-      updateCellSelectionVisual(key, false);
+C.clearSelection = function() {
+  for (const key of s.selectedCells) C.updateCellSelectionVisual(key, false);
+  s.selectedCells.clear();
+  for (const key of s.selectedWalls) C.updateWallSelectionVisual(key, false);
+  s.selectedWalls.clear();
+};
+
+C.toggleSelectAtMouse2D = function(event) {
+  const grid = C.input.getGridFromMouse(event);
+  if (grid && C.cellExists(grid.gx, grid.gz)) {
+    const key = C.gridKey(grid.gx, grid.gz);
+    if (s.selectedCells.has(key)) {
+      s.selectedCells.delete(key);
+      C.updateCellSelectionVisual(key, false);
     } else {
-      state.selectedCells.add(key);
-      updateCellSelectionVisual(key, true);
+      s.selectedCells.add(key);
+      C.updateCellSelectionVisual(key, true);
     }
     return;
   }
-  // Check wall under cursor
-  const edge = getNearestEdge(event);
+  const edge = C.getNearestEdge(event);
   if (edge) {
-    const key = canonicalWallKey(edge.gx, edge.gz, edge.dir);
-    if (state.walls.has(key)) {
-      if (state.selectedWalls.has(key)) {
-        state.selectedWalls.delete(key);
-        updateWallSelectionVisual(key, false);
+    const key = C.canonicalWallKey(edge.gx, edge.gz, edge.dir);
+    if (s.walls.has(key)) {
+      if (s.selectedWalls.has(key)) {
+        s.selectedWalls.delete(key);
+        C.updateWallSelectionVisual(key, false);
       } else {
-        state.selectedWalls.add(key);
-        updateWallSelectionVisual(key, true);
+        s.selectedWalls.add(key);
+        C.updateWallSelectionVisual(key, true);
       }
       return;
     }
   }
-  // Empty space — deselect all
-  clearSelection();
-}
+  C.clearSelection();
+};
 
-function toggleSelectAtMouse3D(event) {
-  _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
-  _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  _raycaster.setFromCamera(_ndc, state.camera3D);
+C.toggleSelectAtMouse3D = function(event) {
+  C._ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
+  C._ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  C._raycaster.setFromCamera(C._ndc, C.camera3D);
 
-  // Check cell meshes
-  const cellHits = _raycaster.intersectObjects(Array.from(cellMeshes.values()));
+  const cellHits = C._raycaster.intersectObjects(Array.from(C.cellMeshes.values()));
   if (cellHits.length > 0) {
     const key = cellHits[0].object.name.replace('cell-', '');
-    if (state.grid.has(key)) {
-      if (state.selectedCells.has(key)) {
-        state.selectedCells.delete(key);
-        updateCellSelectionVisual(key, false);
+    if (s.grid.has(key)) {
+      if (s.selectedCells.has(key)) {
+        s.selectedCells.delete(key);
+        C.updateCellSelectionVisual(key, false);
       } else {
-        state.selectedCells.add(key);
-        updateCellSelectionVisual(key, true);
+        s.selectedCells.add(key);
+        C.updateCellSelectionVisual(key, true);
       }
       return;
     }
   }
 
-  // Check wall meshes
-  const wallHits = _raycaster.intersectObjects(Array.from(wallMeshes.values()));
+  const wallHits = C._raycaster.intersectObjects(Array.from(C.wallMeshes.values()));
   if (wallHits.length > 0) {
     const key = wallHits[0].object.name.replace('wall-', '');
-    if (state.walls.has(key)) {
-      if (state.selectedWalls.has(key)) {
-        state.selectedWalls.delete(key);
-        updateWallSelectionVisual(key, false);
+    if (s.walls.has(key)) {
+      if (s.selectedWalls.has(key)) {
+        s.selectedWalls.delete(key);
+        C.updateWallSelectionVisual(key, false);
       } else {
-        state.selectedWalls.add(key);
-        updateWallSelectionVisual(key, true);
+        s.selectedWalls.add(key);
+        C.updateWallSelectionVisual(key, true);
       }
       return;
     }
   }
 
-  clearSelection();
-}
+  C.clearSelection();
+};
 
-function deleteAtMouse3D(event) {
-  _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
-  _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  _raycaster.setFromCamera(_ndc, state.camera3D);
+C.deleteAtMouse3D = function(event) {
+  C._ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
+  C._ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  C._raycaster.setFromCamera(C._ndc, C.camera3D);
 
-  const cellHits = _raycaster.intersectObjects(Array.from(cellMeshes.values()));
+  const cellHits = C._raycaster.intersectObjects(Array.from(C.cellMeshes.values()));
   if (cellHits.length > 0) {
     const key = cellHits[0].object.name.replace('cell-', '');
     const [gx, gz] = key.split(',').map(Number);
-    removeCell(gx, gz);
-    updateStatusBar();
+    C.removeCell(gx, gz);
+    C.ui.updateStatusBar();
     return true;
   }
 
-  const wallHits = _raycaster.intersectObjects(Array.from(wallMeshes.values()));
+  const wallHits = C._raycaster.intersectObjects(Array.from(C.wallMeshes.values()));
   if (wallHits.length > 0) {
     const key = wallHits[0].object.name.replace('wall-', '');
-    if (state.walls.has(key)) {
+    if (s.walls.has(key)) {
       const [gx, gz, dir] = key.split(',');
-      removeWall(parseInt(gx), parseInt(gz), dir);
-      updateStatusBar();
+      C.removeWall(parseInt(gx), parseInt(gz), dir);
+      C.ui.updateStatusBar();
       return true;
     }
   }
-
   return false;
-}
+};
 
-function deleteSelectedCells() {
-  for (const key of state.selectedCells) {
+C.deleteSelectedCells = function() {
+  for (const key of s.selectedCells) {
     const [gx, gz] = key.split(',').map(Number);
-    removeCell(gx, gz);
+    C.removeCell(gx, gz);
   }
-  state.selectedCells.clear();
-  for (const key of state.selectedWalls) {
-    removeWallMeshByKey(key);
-    state.walls.delete(key);
+  s.selectedCells.clear();
+  for (const key of s.selectedWalls) {
+    C.scene.removeWallMeshByKey(key);
+    s.walls.delete(key);
   }
-  state.selectedWalls.clear();
-  updateStatusBar();
-}
+  s.selectedWalls.clear();
+  C.ui.updateStatusBar();
+};
 
-function updateCellSelectionVisual(key, selected) {
-  const mesh = cellMeshes.get(key);
-  if (!mesh) return;
-  if (selected) {
-    mesh.material.emissive = new THREE.Color(0x444400);
-    mesh.material.emissiveIntensity = 0.6;
-  } else {
-    mesh.material.emissive = new THREE.Color(0x000000);
-    mesh.material.emissiveIntensity = 0;
-  }
-}
+})();
 
-// ===== 3D INPUT =====
+// ===== tools/house.js =====
+// ===== CHIRAL HAMMER v0.10.0 — TOOL: HOUSE =====
+// Composes fill + walls: drag to fill cells AND place wall perimeter. Atomic on mouseup.
+(function() {
+const C = window.Chiral;
+const s = C.state;
 
-function update3DCamera(deltaSec) {
-  if (state.mode !== '3d') return;
+C.tools = C.tools || {};
 
-  const speed = state.keys['ShiftLeft'] || state.keys['ShiftRight'] ? 15 : 5;
-  const moveSpeed = speed * deltaSec;
-  const lookSensitivity = 0.25;
-
-  // Accumulate mouse delta into target yaw/pitch while right mouse is held
-  if (state.rightDown) {
-    state.targetYaw -= state.mouse.x * lookSensitivity * deltaSec;
-    state.targetPitch -= state.mouse.y * lookSensitivity * deltaSec;
-    state.targetPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.targetPitch));
-    state.mouse.set(0, 0);
-  }
-
-  // Smooth lerp camera toward target
-  const lerpRate = 5;
-  const t = 1 - Math.exp(-lerpRate * deltaSec);
-  state.camYaw += (state.targetYaw - state.camYaw) * t;
-  state.camPitch += (state.targetPitch - state.camPitch) * t;
-
-  const forward = new THREE.Vector3(
-    Math.sin(state.camYaw) * Math.cos(state.camPitch),
-    Math.sin(state.camPitch),
-    Math.cos(state.camYaw) * Math.cos(state.camPitch)
-  ).normalize();
-
-  const right = new THREE.Vector3(
-    Math.sin(state.camYaw + Math.PI / 2),
-    0,
-    Math.cos(state.camYaw + Math.PI / 2)
-  ).normalize();
-
-  if (state.keys['KeyW']) state.camPos.addScaledVector(forward, moveSpeed);
-  if (state.keys['KeyS']) state.camPos.addScaledVector(forward, -moveSpeed);
-  if (state.keys['KeyA']) state.camPos.addScaledVector(right, moveSpeed);
-  if (state.keys['KeyD']) state.camPos.addScaledVector(right, -moveSpeed);
-  if (state.keys['KeyQ']) state.camPos.y -= moveSpeed;
-  if (state.keys['KeyE']) state.camPos.y += moveSpeed;
-
-  // Arrow keys = look (twin-stick)
-  const arrowLook = 2 * deltaSec;
-  if (state.keys['ArrowLeft'])  state.targetYaw += arrowLook;
-  if (state.keys['ArrowRight']) state.targetYaw -= arrowLook;
-  if (state.keys['ArrowUp'])    state.targetPitch += arrowLook;
-  if (state.keys['ArrowDown'])  state.targetPitch -= arrowLook;
-  state.targetPitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, state.targetPitch));
-
-  const lookTarget = new THREE.Vector3(
-    state.camPos.x + Math.sin(state.camYaw) * Math.cos(state.camPitch),
-    state.camPos.y + Math.sin(state.camPitch),
-    state.camPos.z + Math.cos(state.camYaw) * Math.cos(state.camPitch)
-  );
-
-  state.camera3D.position.copy(state.camPos);
-  state.camera3D.lookAt(lookTarget);
-
-  sbCursor.textContent =
-    `${state.camPos.x.toFixed(1)}, ${state.camPos.y.toFixed(1)}, ${state.camPos.z.toFixed(1)}`;
-}
-
-// ===== MODE SWITCHING =====
-
-function getCellBounds() {
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  if (cellMeshes.size === 0) return null;
-  for (const mesh of cellMeshes.values()) {
-    const p = mesh.position;
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.z < minZ) minZ = p.z;
-    if (p.z > maxZ) maxZ = p.z;
-  }
-  return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, span: Math.max(maxX - minX, maxZ - minZ, 2) };
-}
-
-function setMode(mode) {
-  state.mode = mode;
-  activeCamera = mode === '2d' ? state.camera2D : state.camera3D;
-
-  if (mode === '2d') {
-    highlightQuad.visible = true;
-    wall2DGroup.visible = true;
-    sbCursor.textContent = '—';
-  } else {
-    highlightQuad.visible = false;
-    wall2DGroup.visible = false;
-
-    const bounds = getCellBounds();
-    if (bounds) {
-      const dist = Math.max(bounds.span * 1.2, 6);
-      const h = dist * 0.6;
-      state.camPos.set(bounds.cx + dist, h, bounds.cz + dist);
-      const dir = new THREE.Vector3(bounds.cx, 0, bounds.cz).sub(state.camPos).normalize();
-      state.camYaw = Math.atan2(dir.x, dir.z);
-      state.camPitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
-      state.targetYaw = state.camYaw;
-      state.targetPitch = state.camPitch;
-    }
-    state.camera3D.position.copy(state.camPos);
-  }
-
-  updateHelp();
-  updateStatusBar();
-
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  if (mode === '2d') {
-    update2DCameraAspect();
-  } else {
-    state.camera3D.aspect = window.innerWidth / window.innerHeight;
-    state.camera3D.updateProjectionMatrix();
-  }
-}
-
-function update2DCameraAspect() {
-  const a = window.innerWidth / window.innerHeight;
-  const fs = frustumSize;
-  state.camera2D.left = fs * a / -2;
-  state.camera2D.right = fs * a / 2;
-  state.camera2D.top = fs / 2;
-  state.camera2D.bottom = fs / -2;
-  state.camera2D.updateProjectionMatrix();
-}
-
-// ===== 2D PAN & ZOOM =====
-
-function pan2D(dx, dy) {
-  if (state.mode !== '2d') return;
-  const s = frustumSize / (state.camera2D.zoom * window.innerHeight);
-  state.camera2D.position.x -= dx * s;
-  state.camera2D.position.z -= dy * s;
-}
-
-function zoom2D(delta, cursorX, cursorY) {
-  if (state.mode !== '2d') return;
-
-  const oldZoom = state.camera2D.zoom;
-  const newZoom = Math.max(0.25, Math.min(8, oldZoom * (1 + delta * 0.001)));
-  state.camera2D.zoom = newZoom;
-
-  const ndcX = (cursorX / window.innerWidth) * 2 - 1;
-  const ndcY = -(cursorY / window.innerHeight) * 2 + 1;
-  const worldBefore = _v3.set(ndcX / oldZoom, 0, ndcY / oldZoom)
-    .add(state.camera2D.position);
-  const worldAfter = _v3.set(ndcX / newZoom, 0, ndcY / newZoom)
-    .add(state.camera2D.position);
-  state.camera2D.position.add(worldBefore.sub(worldAfter));
-
-  state.camera2D.updateProjectionMatrix();
-}
-
-// ===== EVENT HANDLERS =====
-
-function onMouseDown(event) {
-  if (event.target !== renderer.domElement) return;
-  const tool = effectiveTool();
-
-  if (state.mode === '2d') {
+C.tools.house = {
+  onDown: function(event) {
     if (event.button === 0) {
-      if (state.keys['Space']) {
-        state.mouseDown = true;
-        state.mouseButton = 0;
-        return;
-      }
-
-      switch (tool) {
-        case 'tile':
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          tileAtMouse(event);
-          break;
-        case 'fill':
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          state._dragStart = getWorldFromMouse(event);
-          tileAtMouse(event);
-          break;
-        case 'wall':
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          state._dragStart = getWorldFromMouse(event);
-          state._dragWallKeys = new Set();
-          {
-            const edge = getNearestEdge(event);
-            if (edge) {
-              state._dragEdgeDir = edge.dir;
-              state._dragEdgeGX = edge.gx;
-              state._dragEdgeGZ = edge.gz;
-            }
-          }
-          break;
-        case 'select':
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          {
-            const world = getWorldFromMouse(event);
-            if (world) {
-              state.selecting = true;
-              state.selectStart.set(world.x, world.z);
-              state.selectEnd.set(world.x, world.z);
-              updateSelRect();
-              selRect.visible = true; selOutline.visible = true;
-            }
-          }
-          break;
-        case 'house':
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          state._dragStart = getWorldFromMouse(event);
-          break;
-      }
+      s._dragStart = C.input.getWorldFromMouse(event);
     } else if (event.button === 2) {
-      state.mouseDown = true;
-      state.mouseButton = 2;
-      if (tool === 'fill' || tool === 'house') state._dragStart = getWorldFromMouse(event);
-
-      if (tool === 'tile' || tool === 'fill' || tool === 'house') {
-        const grid = getGridFromMouse(event);
-        if (grid && cellExists(grid.gx, grid.gz)) {
-          removeCell(grid.gx, grid.gz);
-          updateStatusBar();
-        }
-      } else if (tool === 'wall') {
-        state._dragStart = getWorldFromMouse(event);
-        const edge = getNearestEdge(event);
-        if (edge) {
-          state._dragEdgeDir = edge.dir;
-          state._dragEdgeGX = edge.gx;
-          state._dragEdgeGZ = edge.gz;
-          const key = canonicalWallKey(edge.gx, edge.gz, edge.dir);
-          if (state.walls.has(key)) {
-            removeWall(edge.gx, edge.gz, edge.dir);
-            updateStatusBar();
-          }
-        }
-      } else if (tool === 'select') {
-        state._dragStart = getWorldFromMouse(event);
-        const grid = getGridFromMouse(event);
-        if (grid && cellExists(grid.gx, grid.gz)) {
-          removeCell(grid.gx, grid.gz);
-          updateStatusBar();
-        } else {
-          const edge = getNearestEdge(event);
-          if (edge) {
-            const key = canonicalWallKey(edge.gx, edge.gz, edge.dir);
-            if (state.walls.has(key)) {
-              removeWall(edge.gx, edge.gz, edge.dir);
-              updateStatusBar();
-            }
-          }
-        }
+      s._dragStart = C.input.getWorldFromMouse(event);
+      const grid = C.input.getGridFromMouse(event);
+      if (grid && C.cellExists(grid.gx, grid.gz)) {
+        C.removeCell(grid.gx, grid.gz);
+        C.ui.updateStatusBar();
       }
-    } else if (event.button === 1) {
-      state.middleDown = true;
-      event.preventDefault();
     }
-  }
+  },
 
-  if (state.mode === '3d') {
-    if (event.button === 0) {
-      switch (tool) {
-        case 'tile': {
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          const world = getWorldFromMouse(event);
-          if (world) {
-            const gx = Math.floor(world.x);
-            const gz = Math.floor(world.z);
-            const existing = getCell(gx, gz);
-            if (!existing || existing.color !== state.activeColor) {
-              setCell(gx, gz, state.activeColor);
-              updateStatusBar();
-            }
-          }
-          break;
-        }
-        case 'fill': {
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          const world = getWorldFromMouse(event);
-          state._dragStart = world;
-          if (world) {
-            const gx = Math.floor(world.x);
-            const gz = Math.floor(world.z);
-            const existing = getCell(gx, gz);
-            if (!existing || existing.color !== state.activeColor) {
-              setCell(gx, gz, state.activeColor);
-              updateStatusBar();
-            }
-          }
-          break;
-        }
-        case 'wall':
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          state._dragStart = getWorldFromMouse(event);
-          state._dragWallKeys = new Set();
-          {
-            const edge = getNearestEdge(event);
-            if (edge) {
-              state._dragEdgeDir = edge.dir;
-              state._dragEdgeGX = edge.gx;
-              state._dragEdgeGZ = edge.gz;
-            }
-          }
-          break;
-        case 'select':
-          state.mouseDown = true;
-          state.selecting = true;
-          state.selectScreenStart.set(event.clientX, event.clientY);
-          state.selectScreenEnd.set(event.clientX, event.clientY);
-          selBox.style.display = 'block';
-          selBox.style.left = event.clientX + 'px';
-          selBox.style.top = event.clientY + 'px';
-          selBox.style.width = '0px';
-          selBox.style.height = '0px';
-          break;
-        case 'house': {
-          state.mouseDown = true;
-          state.mouseButton = 0;
-          state._dragStart = getWorldFromMouse(event);
-          break;
-        }
-      }
-    } else if (event.button === 2) {
-      state.mouseDown = true;
-      state.mouseButton = 2;
-      deleteAtMouse3D(event);
-    } else if (event.button === 1) {
-      state.rightDown = true;
-      state.mouse.set(0, 0);
+  onMove: function(event) {
+    if (s.mode === '2d') C.updateHighlight(event);
+    else C.edgeHighlight.visible = false;
+
+    if (s.mouseDown && (event.buttons & 1) && s._dragStart) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) C.showDragPreview(s._dragStart, world);
     }
-  }
-}
+    if (s.mouseDown && s.mouseButton === 2 && (event.buttons & 2) && s._dragStart) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) C.showDragPreview(s._dragStart, world);
+    }
+  },
 
-function onMouseMove(event) {
-  state.mouse.set(
-    event.movementX || 0,
-    event.movementY || 0
-  );
-
-  const tool = effectiveTool();
-
-  if (state.mode === '2d') {
-    updateHighlight(event);
-
-    if (state.selecting) {
-      const world = getWorldFromMouse(event);
+  onUp: function(event) {
+    C.hideDragPreview();
+    if (s._dragStart && s.mouseButton === 0) {
+      const world = C.input.getWorldFromMouse(event);
       if (world) {
-        state.selectEnd.set(world.x, world.z);
-        updateSelRect();
-      }
-      return;
-    }
-
-    if (state.middleDown || (state.keys['Space'] && state.mouseDown)) {
-      pan2D(event.movementX, event.movementY);
-      return;
-    }
-
-    if (state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
-      if (state._dragStart) {
-        const world = getWorldFromMouse(event);
-        if (world) {
-          if (tool === 'fill') showDragPreview(state._dragStart, world);
-          else if (tool === 'wall') {
-            for (const key of state._dragWallKeys) {
-              removeWallMeshByKey(key);
-              state.walls.delete(key);
-            }
-            state._dragWallKeys.clear();
-            const walls = computePenWalls(state._dragEdgeGX, state._dragEdgeGZ, state._dragEdgeDir, world);
-            for (const w of walls) {
-              setWall(w.gx, w.gz, w.dir, state.wallColor, state.wallHeight);
-              state._dragWallKeys.add(canonicalWallKey(w.gx, w.gz, w.dir));
-            }
-            updateStatusBar();
-          }
-          else if (tool === 'house') { showDragPreview(state._dragStart, world); }
-        }
-      } else {
-        if (tool === 'tile') tileAtMouse(event);
+        C.fillRect(s._dragStart, world);
+        C.wallRect(s._dragStart, world);
       }
     }
-
-    if (state.mouseDown && state.mouseButton === 2 && (event.buttons & 2)) {
-      if (tool === 'wall' && state._dragStart) {
-        const world = getWorldFromMouse(event);
-        if (world) {
-          const walls = computePenWalls(state._dragEdgeGX, state._dragEdgeGZ, state._dragEdgeDir, world);
-          for (const w of walls) {
-            const key = canonicalWallKey(w.gx, w.gz, w.dir);
-            if (state.walls.has(key)) removeWall(w.gx, w.gz, w.dir);
-          }
-          updateStatusBar();
-        }
-      } else if (state._dragStart) {
-        const world = getWorldFromMouse(event);
-        if (world) eraseRect(state._dragStart, world);
-      } else {
-        const grid = getGridFromMouse(event);
-        if (grid && cellExists(grid.gx, grid.gz)) {
-          removeCell(grid.gx, grid.gz);
-          updateStatusBar();
-        }
-      }
+    if (s._dragStart && s.mouseButton === 2) {
+      const world = C.input.getWorldFromMouse(event);
+      if (world) C.eraseRect(s._dragStart, world);
     }
   }
+};
 
-  if (state.mode === '3d') {
-    if (tool === 'wall') {
-      updateEdgeHighlight(event);
-    } else {
-      edgeHighlight.visible = false;
-    }
+// ===== WALL RECT (perimeter walls on a rectangular region) =====
 
-    if (state.mouseDown && state.mouseButton === 0 && !state.selecting && (event.buttons & 1)) {
-      const world = getWorldFromMouse(event);
-      if (world && state._dragStart) {
-        if (tool === 'fill') showDragPreview(state._dragStart, world);
-        else if (tool === 'wall') {
-          for (const key of state._dragWallKeys) {
-            removeWallMeshByKey(key);
-            state.walls.delete(key);
-          }
-          state._dragWallKeys.clear();
-          const walls = computeOrthogonalWalls(state._dragStart, world);
-          for (const w of walls) {
-            setWall(w.gx, w.gz, w.dir, state.wallColor, state.wallHeight);
-            state._dragWallKeys.add(canonicalWallKey(w.gx, w.gz, w.dir));
-          }
-          updateStatusBar();
-        }
-        else if (tool === 'house') { showDragPreview(state._dragStart, world); }
-      } else if (world) {
-        const gx = Math.floor(world.x);
-        const gz = Math.floor(world.z);
-        if (tool === 'tile') {
-          const existing = getCell(gx, gz);
-          if (!existing || existing.color !== state.activeColor) {
-            setCell(gx, gz, state.activeColor);
-            updateStatusBar();
-          }
-        }
-      }
-    }
+C.wallRect = function(worldA, worldB) {
+  const x1 = Math.min(worldA.x, worldB.x);
+  const x2 = Math.max(worldA.x, worldB.x);
+  const z1 = Math.min(worldA.z, worldB.z);
+  const z2 = Math.max(worldA.z, worldB.z);
+  const gx1 = Math.floor(x1);
+  const gx2 = Math.floor(x2 - 0.001);
+  const gz1 = Math.floor(z1);
+  const gz2 = Math.floor(z2 - 0.001);
 
-    if (state.mouseDown && state.mouseButton === 2 && !state.selecting && (event.buttons & 2)) {
-      const world = getWorldFromMouse(event);
-      if (world) {
-        const gx = Math.floor(world.x);
-        const gz = Math.floor(world.z);
-        if (cellExists(gx, gz)) {
-          removeCell(gx, gz);
-          updateStatusBar();
-        }
-      }
-    }
-
-    if (state.selecting) {
-      state.selectScreenEnd.set(event.clientX, event.clientY);
-      const x1 = Math.min(state.selectScreenStart.x, state.selectScreenEnd.x);
-      const y1 = Math.min(state.selectScreenStart.y, state.selectScreenEnd.y);
-      const x2 = Math.max(state.selectScreenStart.x, state.selectScreenEnd.x);
-      const y2 = Math.max(state.selectScreenStart.y, state.selectScreenEnd.y);
-      selBox.style.left = x1 + 'px';
-      selBox.style.top = y1 + 'px';
-      selBox.style.width = (x2 - x1) + 'px';
-      selBox.style.height = (y2 - y1) + 'px';
-    }
+  const newWalls = [];
+  for (let gx = gx1; gx <= gx2; gx++) {
+    newWalls.push({ gx, gz: gz2 + 1, dir: 'N' });
+    newWalls.push({ gx, gz: gz1, dir: 'N' });
   }
-}
-
-function onMouseUp(event) {
-  const tool = effectiveTool();
-
-  if (state.selecting) {
-    if (state.mode === '3d') {
-      const dx = Math.abs(state.selectScreenEnd.x - state.selectScreenStart.x);
-      const dy = Math.abs(state.selectScreenEnd.y - state.selectScreenStart.y);
-      if (dx < 3 && dy < 3) {
-        toggleSelectAtMouse3D(event);
-      } else {
-        commitSelection3D();
-      }
-      selBox.style.display = 'none';
-    } else {
-      const dx = Math.abs(state.selectEnd.x - state.selectStart.x);
-      const dy = Math.abs(state.selectEnd.y - state.selectStart.y);
-      if (dx < 0.2 && dy < 0.2) {
-        toggleSelectAtMouse2D(event);
-      } else {
-        commitSelection();
-      }
-      selRect.visible = false; selOutline.visible = false;
-    }
-    state.selecting = false;
+  for (let gz = gz1; gz <= gz2; gz++) {
+    newWalls.push({ gx: gx1 - 1, gz, dir: 'E' });
+    newWalls.push({ gx: gx2, gz, dir: 'E' });
   }
 
-  // Wall tool: small click = place single edge (LMB only); drag walls already placed in real-time
-  if (tool === 'wall' && state._dragStart) {
-    if (state.mouseButton === 0) {
-      const world = getWorldFromMouse(event);
-      if (world) {
-        const dx = world.x - state._dragStart.x;
-        const dz = world.z - state._dragStart.z;
-        if (Math.abs(dx) < 0.3 && Math.abs(dz) < 0.3) {
-          const edge = getNearestEdge(event);
-          if (edge) {
-            setWall(edge.gx, edge.gz, edge.dir, state.wallColor, state.wallHeight);
-            updateStatusBar();
-          }
-        }
-      }
-    }
-    state._dragWallKeys = null;
-    state._dragEdgeDir = null;
-    state._dragEdgeGX = null;
-    state._dragEdgeGZ = null;
+  for (const w of newWalls) {
+    C.setWallSilent(w.gx, w.gz, w.dir, s.wallColor, s.wallHeight);
   }
+  C.markDirty();
+  C.ui.updateStatusBar();
+};
 
-  // Fill tool: atomic on mouseup
-  if (tool === 'fill' && state._dragStart) {
-    hideDragPreview();
-    const world = getWorldFromMouse(event);
-    if (world) {
-      fillRect(state._dragStart, world);
-    }
-  }
+})();
 
-  // House tool: fill cells + wall perimeter, atomic on mouseup
-  if (tool === 'house' && state._dragStart) {
-    hideDragPreview();
-    const world = getWorldFromMouse(event);
-    if (world) {
-      fillRect(state._dragStart, world);
-      wallRect(state._dragStart, world);
-    }
-  }
+// ===== ui.js =====
+// ===== CHIRAL HAMMER v0.10.0 — UI =====
+// Palette, toolbar, statusbar, help, panels, control panel.
+(function() {
+const C = window.Chiral;
+const s = C.state;
 
-  state._dragStart = null;
-  state.mouseDown = false;
-  state.mouseButton = -1;
-  state.middleDown = false;
-  state.rightDown = false;
-
-  if (state.dirty) {
-    scheduleSave();
-  }
-}
-
-function onWheel(event) {
-  if (state.mode === '2d') {
-    zoom2D(event.deltaY, event.clientX, event.clientY);
-  } else if (state.mode === '3d') {
-    _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
-    _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    _raycaster.setFromCamera(_ndc, state.camera3D);
-    const hit = new THREE.Vector3();
-    const didHit = _raycaster.ray.intersectPlane(_plane, hit);
-    const dolly = -event.deltaY * 0.05;
-    if (didHit) {
-      const dir = new THREE.Vector3().subVectors(hit, state.camPos).normalize();
-      state.camPos.addScaledVector(dir, dolly);
-    } else {
-      const fwd = new THREE.Vector3(
-        Math.sin(state.camYaw) * Math.cos(state.camPitch),
-        Math.sin(state.camPitch),
-        Math.cos(state.camYaw) * Math.cos(state.camPitch)
-      ).normalize();
-      state.camPos.addScaledVector(fwd, dolly);
-    }
-  }
-}
-
-function onContextMenu(event) {
-  event.preventDefault();
-}
-
-function onKeyDown(event) {
-  state.keys[event.code] = true;
-
-  if (event.code === 'Tab') {
-    event.preventDefault();
-    setMode(state.mode === '2d' ? '3d' : '2d');
-    return;
-  }
-
-  if (event.code === 'KeyT') {
-    toggleTexturePanel();
-    return;
-  }
-
-  if (event.code === 'KeyG') {
-    toggleWireframe();
-    return;
-  }
-
-  if (event.code === 'KeyH') {
-    toggleFog();
-    return;
-  }
-
-  if (event.code === 'Backspace' || event.code === 'Delete') {
-    event.preventDefault();
-    deleteSelectedCells();
-    return;
-  }
-
-  if (event.code === 'KeyB') {
-    toggleTreasureBox();
-    return;
-  }
-
-  if (event.code === 'Escape') {
-    if (state.tpOpen) { toggleTexturePanel(); return; }
-    if (state.tbOpen) { toggleTreasureBox(); return; }
-  }
-
-  // Tool shortcuts (1-5) — same in 2D and 3D
-  if (event.code === 'Digit1') { setActiveTool('tile'); return; }
-  if (event.code === 'Digit2') { setActiveTool('fill'); return; }
-  if (event.code === 'Digit3') { setActiveTool('wall'); return; }
-  if (event.code === 'Digit4') { setActiveTool('select'); return; }
-  if (event.code === 'Digit5') { setActiveTool('house'); return; }
-
-  // Shift temporarily switches to select tool
-  if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
-    updateHelp();
-    updateStatusBar();
-  }
-}
-
-function onKeyUp(event) {
-  state.keys[event.code] = false;
-  if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
-    updateHelp();
-    updateStatusBar();
-  }
-}
-
-function onResize() {
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  if (state.mode === '2d') {
-    update2DCameraAspect();
-  } else {
-    state.camera3D.aspect = window.innerWidth / window.innerHeight;
-    state.camera3D.updateProjectionMatrix();
-  }
-}
+C.ui = {};
 
 // ===== PALETTE =====
 
-function buildPalette() {
-  paletteEl.innerHTML = '';
-  state.palette.forEach(color => {
+C.ui.buildPalette = function() {
+  const el = document.getElementById('palette');
+  if (!el) return;
+  el.innerHTML = '';
+  s.palette.forEach(function(color) {
     const swatch = document.createElement('div');
-    swatch.className = 'swatch' + (color === state.activeColor ? ' active' : '');
+    swatch.className = 'swatch' + (color === s.activeColor ? ' active' : '');
     swatch.style.background = color;
     swatch.title = color;
-    swatch.addEventListener('click', () => {
-      state.activeColor = color;
-      buildPalette();
+    swatch.addEventListener('click', function() {
+      s.activeColor = color;
+      C.ui.buildPalette();
     });
-    paletteEl.appendChild(swatch);
+    el.appendChild(swatch);
   });
-}
-
-// ===== TREASURE BOX =====
-
-function toggleTexturePanel() {
-  state.tpOpen = !state.tpOpen;
-  if (state.tpOpen) {
-    texturePanel.classList.add('open');
-  } else {
-    texturePanel.classList.remove('open');
-  }
-}
-
-function toggleWireframe() {
-  state.wireframe = !state.wireframe;
-  for (const [key, mesh] of cellMeshes) {
-    mesh.material.wireframe = state.wireframe;
-    if (state.wireframe) {
-      mesh.material.color.set('#222222');
-    } else {
-      const cell = state.grid.get(key);
-      if (cell) mesh.material.color.set(cell.color);
-    }
-  }
-  for (const mesh of wallMeshes.values()) {
-    mesh.material.wireframe = state.wireframe;
-  }
-}
-
-function toggleFog() {
-  if (scene.fog) {
-    scene.fog = null;
-  } else {
-    scene.fog = new THREE.Fog(0x4a6a7a, 30, 80);
-  }
-  updateHelp();
-}
-
-function toggleHelp() {
-  const overlay = document.getElementById('help-overlay');
-  overlay.classList.toggle('collapsed');
-}
-
-function toggleTreasureBox() {
-  state.tbOpen = !state.tbOpen;
-  if (state.tbOpen) {
-    treasureBox.classList.add('open');
-  } else {
-    treasureBox.classList.remove('open');
-  }
-}
+};
 
 // ===== STATUS BAR =====
 
-function updateStatusBar() {
-  const tool = effectiveTool();
-  const prefix = state.mode === '2d' ? '2D' : '3D';
-  const shiftActive = state.keys['ShiftLeft'] || state.keys['ShiftRight'];
-  if (shiftActive) {
-    sbMode.textContent = `${prefix} SELECT`;
-  } else {
-    sbMode.textContent = `${prefix} ${tool.toUpperCase()}`;
+C.ui.setSaveStatus = function(text, color) {
+  const sb = document.getElementById('sb-save');
+  if (sb) { sb.textContent = text; sb.style.color = color; }
+};
+
+C.ui.updateStatusBar = function() {
+  const tool = C.effectiveTool();
+  const prefix = s.mode === '2d' ? '2D' : '3D';
+  const shiftActive = s.keys['ShiftLeft'] || s.keys['ShiftRight'];
+  const sbMode = document.getElementById('sb-mode');
+  if (sbMode) {
+    sbMode.textContent = shiftActive ? prefix + ' SELECT' : prefix + ' ' + tool.toUpperCase();
   }
-  sbCells.textContent = state.grid.size + (state.walls.size ? ` +${state.walls.size}w` : '');
-}
+  const sbCells = document.getElementById('sb-cells');
+  if (sbCells) {
+    sbCells.textContent = s.grid.size + (s.walls.size ? ' +' + s.walls.size + 'w' : '');
+  }
+};
 
 // ===== HELP OVERLAY =====
 
-function updateHelp() {
-  const tool = effectiveTool();
+C.ui.updateHelp = function() {
+  const tool = C.effectiveTool();
   const toolLabel = tool.toUpperCase();
-  const shiftActive = state.keys['ShiftLeft'] || state.keys['ShiftRight'];
+  const shiftActive = s.keys['ShiftLeft'] || s.keys['ShiftRight'];
 
   const toolActions = {
     tile:   { lmb: 'tile cell', rmb: 'erase cell' },
@@ -1994,272 +2362,628 @@ function updateHelp() {
   };
   const act = toolActions[tool];
 
-  if (state.mode === '2d') {
-    helpMode.textContent = shiftActive ? '2D — SELECT (Shift)' : `2D — ${toolLabel}`;
-    helpKeys.innerHTML = `
-      <span class="key">LMB</span> <span class="dim">${act.lmb}</span><br>
-      <span class="key">RMB</span> <span class="dim">${act.rmb}</span><br>
-      <span class="key">Shift hold</span> <span class="dim">SELECT</span><br>
-      <span class="key">Space+LMB</span> <span class="dim">pan</span> / <span class="key">MMB</span> <span class="dim">pan</span><br>
-      <span class="key">Scroll</span> <span class="dim">zoom</span><br>
-      <span class="key">1</span><span class="dim">Tile</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
-      <span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">Del</span> <span class="dim">delete</span><br>
-      <span class="key">Tab</span> <span class="dim">3D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
-    `;
+  const helpMode = document.getElementById('help-mode');
+  const helpKeys = document.getElementById('help-keys');
+
+  if (s.mode === '2d') {
+    if (helpMode) helpMode.textContent = shiftActive ? '2D — SELECT (Shift)' : '2D — ' + toolLabel;
+    if (helpKeys) helpKeys.innerHTML =
+      '<span class="key">LMB</span> <span class="dim">' + act.lmb + '</span><br>' +
+      '<span class="key">RMB</span> <span class="dim">' + act.rmb + '</span><br>' +
+      '<span class="key">Shift hold</span> <span class="dim">SELECT</span><br>' +
+      '<span class="key">Space+LMB</span> <span class="dim">pan</span> / <span class="key">MMB</span> <span class="dim">pan</span><br>' +
+      '<span class="key">Scroll</span> <span class="dim">zoom</span><br>' +
+      '<span class="key">1</span><span class="dim">Tile</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>' +
+      '<span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">V</span> <span class="dim">tuning</span> <span class="key">Del</span> <span class="dim">delete</span><br>' +
+      '<span class="key">Ctrl+Z</span> <span class="dim">undo</span> <span class="key">Tab</span> <span class="dim">3D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>';
   } else {
-    helpMode.textContent = shiftActive ? '3D — SELECT (Shift)' : `3D — ${toolLabel}`;
-    helpKeys.innerHTML = `
-      <span class="key">WASD</span> <span class="dim">move</span> <span class="key">Q/E</span> <span class="dim">up/down</span><br>
-      <span class="key">Arrows</span> <span class="dim">look</span> <span class="key">MMB</span> <span class="dim">mouselook</span><br>
-      <span class="key">Scroll</span> <span class="dim">zoom to cursor</span> <span class="key">Shift</span> <span class="dim">boost</span><br>
-      <span class="key">LMB</span> <span class="dim">${act.lmb}</span><br>
-      <span class="key">RMB</span> <span class="dim">${act.rmb}</span><br>
-      <span class="key">Shift hold</span> <span class="dim">SELECT</span><br>
-      <span class="key">1</span><span class="dim">Tile</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
-      <span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">Del</span> <span class="dim">delete</span><br>
-      <span class="key">Tab</span> <span class="dim">2D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
-    `;
+    if (helpMode) helpMode.textContent = shiftActive ? '3D — SELECT (Shift)' : '3D — ' + toolLabel;
+    if (helpKeys) helpKeys.innerHTML =
+      '<span class="key">WASD</span> <span class="dim">move</span> <span class="key">Q/E</span> <span class="dim">up/down</span><br>' +
+      '<span class="key">Arrows</span> <span class="dim">look</span> <span class="key">MMB</span> <span class="dim">mouselook</span><br>' +
+      '<span class="key">Scroll</span> <span class="dim">zoom to cursor</span> <span class="key">Shift</span> <span class="dim">boost</span><br>' +
+      '<span class="key">LMB</span> <span class="dim">' + act.lmb + '</span><br>' +
+      '<span class="key">RMB</span> <span class="dim">' + act.rmb + '</span><br>' +
+      '<span class="key">Shift hold</span> <span class="dim">SELECT</span><br>' +
+      '<span class="key">1</span><span class="dim">Tile</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>' +
+      '<span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">V</span> <span class="dim">tuning</span> <span class="key">Del</span> <span class="dim">delete</span><br>' +
+      '<span class="key">Ctrl+Z</span> <span class="dim">undo</span> <span class="key">Tab</span> <span class="dim">2D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>';
   }
-}
+};
 
-// ===== PERSISTENCE =====
+// ===== PANEL TOGGLES =====
 
-const STORAGE_KEY = 'chiral_hammer:v0.8';
+C.ui.toggleTexturePanel = function() {
+  s.tpOpen = !s.tpOpen;
+  const tp = document.getElementById('texture-panel');
+  if (tp) { if (s.tpOpen) tp.classList.add('open'); else tp.classList.remove('open'); }
+};
 
-function markDirty() {
-  state.dirty = true;
-  sbSave.textContent = 'UNSAVED';
-  sbSave.style.color = '#ff0000';
-}
+C.ui.toggleTreasureBox = function() {
+  s.tbOpen = !s.tbOpen;
+  const tb = document.getElementById('treasure-box');
+  if (tb) { if (s.tbOpen) tb.classList.add('open'); else tb.classList.remove('open'); }
+};
 
-function scheduleSave() {
-  if (state.saveTimeout) clearTimeout(state.saveTimeout);
-  state.saveTimeout = setTimeout(saveState, 500);
-}
+C.ui.toggleFog = function() {
+  s.settings.fogEnabled = !s.settings.fogEnabled;
+  C.applyFog();
+  C.ui.updateHelp();
+};
 
-function saveState() {
-  const data = {
-    version: 0.8,
-    cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
-    walls: Array.from(state.walls.entries()).map(([key, val]) => ({ key, color: val.color, height: val.height })),
+C.ui.toggleHelp = function() {
+  const overlay = document.getElementById('help-overlay');
+  if (overlay) overlay.classList.toggle('collapsed');
+};
+
+C.ui.toggleControlPanel = function() {
+  s.cpOpen = !s.cpOpen;
+  const cp = document.getElementById('control-panel');
+  if (cp) { if (s.cpOpen) cp.classList.add('open'); else cp.classList.remove('open'); }
+};
+
+// ===== CONTROL PANEL =====
+
+C.ui.buildControlPanel = function() {
+  const cp = document.getElementById('control-panel');
+  if (!cp) return;
+
+  var html = '';
+  html += '<div class="cp-header"><span class="cp-title">CONTROL PANEL</span></div>';
+
+  // Sections: Lighting, Fog, Camera, Grid, Display, Defaults
+  var sections = [
+    {
+      title: 'Lighting',
+      controls: [
+        { key: 'ambientIntensity', label: 'Ambient', min: 0, max: 3, step: 0.1 },
+        { key: 'dirIntensity', label: 'Direct', min: 0, max: 5, step: 0.1 },
+        { key: 'dirAzimuth', label: 'Azimuth', min: 0, max: 360, step: 1 },
+        { key: 'dirAltitude', label: 'Altitude', min: 0, max: 90, step: 1 },
+        { key: 'dirColor', label: 'Color', color: true },
+      ]
+    },
+    {
+      title: 'Fog',
+      controls: [
+        { key: 'fogEnabled', label: 'On', checkbox: true },
+        { key: 'fogNear', label: 'Near', min: 1, max: 100, step: 1 },
+        { key: 'fogFar', label: 'Far', min: 10, max: 200, step: 5 },
+        { key: 'fogColor', label: 'Color', color: true },
+      ]
+    },
+    {
+      title: 'Camera',
+      controls: [
+        { key: 'fov', label: 'FOV', min: 30, max: 120, step: 1 },
+        { key: 'flySpeed', label: 'Speed', min: 1, max: 30, step: 1 },
+        { key: 'lookSensitivity', label: 'Look sens', min: 0.05, max: 1.0, step: 0.05 },
+        { key: 'zoomSpeed', label: 'Zoom spd', min: 0.01, max: 0.2, step: 0.01 },
+      ]
+    },
+    {
+      title: 'Grid',
+      controls: [
+        { key: 'gridColor', label: 'Color', color: true },
+        { key: 'gridOpacity', label: 'Opacity', min: 0.1, max: 1.0, step: 0.05 },
+      ]
+    },
+    {
+      title: 'Display',
+      controls: [
+        { key: 'pixelRatioCap', label: 'PxRatio', min: 1, max: 3, step: 1 },
+        { key: 'clearColor', label: 'BG Color', color: true },
+      ]
+    },
+    {
+      title: 'Defaults',
+      controls: [
+        { key: 'defaultWallHeight', label: 'Wall H', min: 0.5, max: 5, step: 0.25 },
+        { key: 'defaultWallColor', label: 'W Color', color: true },
+      ]
+    },
+  ];
+
+  sections.forEach(function(sec) {
+    html += '<div class="cp-section">';
+    html += '<div class="cp-section-header">' + sec.title + '</div>';
+    sec.controls.forEach(function(ctrl) {
+      var val = s.settings[ctrl.key];
+      if (ctrl.checkbox) {
+        html += '<div class="cp-row">';
+        html += '<label>' + ctrl.label + '</label>';
+        html += '<input type="checkbox" data-key="' + ctrl.key + '"' + (val ? ' checked' : '') + '>';
+        html += '</div>';
+      } else if (ctrl.color) {
+        html += '<div class="cp-row">';
+        html += '<label>' + ctrl.label + '</label>';
+        html += '<input type="color" data-key="' + ctrl.key + '" value="' + val + '">';
+        html += '</div>';
+      } else {
+        html += '<div class="cp-row">';
+        html += '<label>' + ctrl.label + '</label>';
+        html += '<input type="range" data-key="' + ctrl.key + '" min="' + ctrl.min + '" max="' + ctrl.max + '" step="' + ctrl.step + '" value="' + val + '">';
+        html += '<span class="cp-val">' + val + '</span>';
+        html += '</div>';
+      }
+    });
+    html += '</div>';
+  });
+
+  html += '<button class="cp-reset" id="cp-reset">Reset Defaults</button>';
+  cp.innerHTML = html;
+
+  // Wire events
+  cp.querySelectorAll('input[type="range"]').forEach(function(input) {
+    input.addEventListener('input', function() {
+      var key = this.dataset.key;
+      var val = parseFloat(this.value);
+      s.settings[key] = val;
+      var row = this.parentElement;
+      var valSpan = row.querySelector('.cp-val');
+      if (valSpan) valSpan.textContent = val;
+      C.applyAllSettings();
+      C.ui.saveSettings();
+    });
+  });
+
+  cp.querySelectorAll('input[type="color"]').forEach(function(input) {
+    input.addEventListener('input', function() {
+      var key = this.dataset.key;
+      s.settings[key] = this.value;
+      C.applyAllSettings();
+      C.ui.saveSettings();
+    });
+  });
+
+  cp.querySelectorAll('input[type="checkbox"]').forEach(function(input) {
+    input.addEventListener('change', function() {
+      var key = this.dataset.key;
+      s.settings[key] = this.checked;
+      C.applyAllSettings();
+      C.ui.saveSettings();
+    });
+  });
+
+  var resetBtn = cp.querySelector('#cp-reset');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', function() {
+      C.ui.resetSettings();
+    });
+  }
+};
+
+C.ui.saveSettings = function() {
+  try {
+    localStorage.setItem('chiral_hammer:settings', JSON.stringify(s.settings));
+  } catch(e) {}
+};
+
+C.ui.loadSettings = function() {
+  try {
+    var raw = localStorage.getItem('chiral_hammer:settings');
+    if (raw) {
+      var loaded = JSON.parse(raw);
+      for (var k in loaded) {
+        if (s.settings.hasOwnProperty(k)) s.settings[k] = loaded[k];
+      }
+    }
+  } catch(e) {}
+};
+
+C.ui.resetSettings = function() {
+  var defaults = {
+    ambientIntensity: 1.5, dirIntensity: 2.0, dirAzimuth: 45, dirAltitude: 60,
+    dirColor: '#ffffff', fogEnabled: true, fogNear: 30, fogFar: 80,
+    fogColor: '#4a6a7a', fov: 60, flySpeed: 5, lookSensitivity: 0.25,
+    zoomSpeed: 0.05, gridSize: 200, gridOpacity: 1.0, gridColor: '#5a6a7a',
+    pixelRatioCap: 2, clearColor: '#4a6a7a', defaultWallHeight: 1.0,
+    defaultWallColor: '#8b7355',
   };
+  for (var k in defaults) s.settings[k] = defaults[k];
+  C.ui.buildControlPanel();
+  C.applyAllSettings();
+  C.ui.saveSettings();
+};
+
+})();
+
+// ===== persistence.js =====
+// ===== CHIRAL HAMMER v0.10.0 — PERSISTENCE =====
+// localStorage auto-save, JSON export/import.
+(function() {
+const C = window.Chiral;
+const s = C.state;
+
+var STORAGE_KEY = 'chiral_hammer:v0.10';
+
+C.persistence = {};
+
+// ===== AUTO-SAVE =====
+
+C.persistence.scheduleSave = function() {
+  if (s.saveTimeout) clearTimeout(s.saveTimeout);
+  s.saveTimeout = setTimeout(C.persistence.saveState, 500);
+};
+
+C.persistence.saveState = function() {
+  var data = {
+    version: '0.10.0',
+    cells: [],
+    walls: []
+  };
+  s.grid.forEach(function(val, key) {
+    data.cells.push({ key: key, color: val.color });
+  });
+  s.walls.forEach(function(val, key) {
+    data.walls.push({ key: key, color: val.color, height: val.height });
+  });
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    state.dirty = false;
-    sbSave.textContent = 'SAVED';
-    sbSave.style.color = '#008000';
-  } catch (e) {
-    sbSave.textContent = 'SAVE ERR';
-    sbSave.style.color = '#ff0000';
+    s.dirty = false;
+    C.ui.setSaveStatus('SAVED', '#008000');
+  } catch(e) {
+    C.ui.setSaveStatus('SAVE ERR', '#ff0000');
     console.warn('Failed to save:', e);
   }
-}
+};
 
-function loadState() {
+C.persistence.loadState = function() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    var raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-    const data = JSON.parse(raw);
+    var data = JSON.parse(raw);
     if (data.cells && Array.isArray(data.cells)) {
-      for (const cell of data.cells) {
-        const [gx, gz] = cell.key.split(',').map(Number);
-        setCell(gx, gz, cell.color);
+      for (var i = 0; i < data.cells.length; i++) {
+        var cell = data.cells[i];
+        var parts = cell.key.split(',');
+        var gx = Number(parts[0]);
+        var gz = Number(parts[1]);
+        C.setCellSilent(gx, gz, cell.color);
       }
-      state.dirty = false;
-      sbSave.textContent = 'LOADED';
-      sbSave.style.color = '#008000';
+      C.ui.setSaveStatus('LOADED', '#008000');
     }
     if (data.walls && Array.isArray(data.walls)) {
-      for (const wall of data.walls) {
-        const { gx, gz, dir } = parseWallKey(wall.key);
-        setWall(gx, gz, dir, wall.color, wall.height || state.wallHeight);
+      for (var j = 0; j < data.walls.length; j++) {
+        var wall = data.walls[j];
+        var w = C.parseWallKey(wall.key);
+        C.setWallSilent(w.gx, w.gz, w.dir, wall.color, wall.height || s.wallHeight);
       }
     }
-  } catch (e) {
+  } catch(e) {
     console.warn('Failed to load:', e);
   }
-}
+};
 
-function exportJSON() {
-  const data = {
-    version: 0.8,
-    cells: Array.from(state.grid.entries()).map(([key, val]) => ({ key, color: val.color })),
-    walls: Array.from(state.walls.entries()).map(([key, val]) => ({ key, color: val.color, height: val.height })),
+// ===== EXPORT =====
+
+C.persistence.exportJSON = function() {
+  var data = {
+    version: '0.10.0',
+    cells: [],
+    walls: []
   };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  s.grid.forEach(function(val, key) {
+    data.cells.push({ key: key, color: val.color });
+  });
+  s.walls.forEach(function(val, key) {
+    data.walls.push({ key: key, color: val.color, height: val.height });
+  });
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
   a.href = url;
   a.download = 'chiral_hammer-map.json';
   a.click();
   URL.revokeObjectURL(url);
-}
+};
 
-function importJSON(file) {
-  const reader = new FileReader();
-  reader.onload = () => {
+C.persistence.importJSON = function(file) {
+  var reader = new FileReader();
+  reader.onload = function() {
     try {
-      const data = JSON.parse(reader.result);
+      var data = JSON.parse(reader.result);
       if (!data.cells || !Array.isArray(data.cells)) {
         alert('Invalid map file: missing cells array.');
         return;
       }
-      clearAllCells();
-      for (const cell of data.cells) {
-        const [gx, gz] = cell.key.split(',').map(Number);
-        setCell(gx, gz, cell.color);
+      C.clearAllCells();
+      for (var i = 0; i < data.cells.length; i++) {
+        var cell = data.cells[i];
+        var parts = cell.key.split(',');
+        var gx = Number(parts[0]);
+        var gz = Number(parts[1]);
+        C.setCellSilent(gx, gz, cell.color);
       }
       if (data.walls && Array.isArray(data.walls)) {
-        for (const wall of data.walls) {
-          const { gx, gz, dir } = parseWallKey(wall.key);
-          setWall(gx, gz, dir, wall.color, wall.height || state.wallHeight);
+        for (var j = 0; j < data.walls.length; j++) {
+          var wall = data.walls[j];
+          var w = C.parseWallKey(wall.key);
+          C.setWallSilent(w.gx, w.gz, w.dir, wall.color, wall.height || s.wallHeight);
         }
       }
-      state.dirty = false;
-      saveState();
-      updateStatusBar();
-    } catch (e) {
+      s.dirty = false;
+      C.persistence.saveState();
+      C.ui.updateStatusBar();
+    } catch(e) {
       alert('Failed to parse map file: ' + e.message);
     }
   };
   reader.readAsText(file);
+};
+
+})();
+
+// ===== main.js =====
+// ===== CHIRAL HAMMER v0.10.0 — MAIN =====
+// Init order, event binding, animate loop, console API.
+(function() {
+const C = window.Chiral;
+const s = C.state;
+
+// ===== EVENT HANDLERS =====
+
+function onMouseDown(event) {
+  if (event.target !== C.renderer.domElement) return;
+
+  s.mouseDown = true;
+  s.mouseButton = event.button;
+
+  if (s.mode === '2d') {
+    if (event.button === 0 && s.keys['Space']) {
+      // Space+LMB pan — handled in onMouseMove
+      return;
+    }
+    if (event.button === 1) {
+      s.middleDown = true;
+      event.preventDefault();
+      return;
+    }
+  }
+
+  if (s.mode === '3d') {
+    if (event.button === 1) {
+      s.rightDown = true;
+      s.mouse.x = 0;
+      s.mouse.y = 0;
+      return;
+    }
+  }
+
+  var tool = C.effectiveTool();
+  var toolObj = C.tools[tool];
+  if (toolObj && toolObj.onDown) {
+    toolObj.onDown(event);
+  }
+}
+
+function onMouseMove(event) {
+  s.mouse.x = event.movementX || 0;
+  s.mouse.y = event.movementY || 0;
+
+  if (s.mode === '2d') {
+    // Pan via middle mouse or space+LMB
+    if (s.middleDown || (s.keys['Space'] && s.mouseDown)) {
+      C.pan2D(event.movementX, event.movementY);
+      return;
+    }
+  }
+
+  var tool = C.effectiveTool();
+  var toolObj = C.tools[tool];
+  if (toolObj && toolObj.onMove) {
+    toolObj.onMove(event);
+  }
+}
+
+function onMouseUp(event) {
+  var tool = C.effectiveTool();
+  var toolObj = C.tools[tool];
+  if (toolObj && toolObj.onUp) {
+    toolObj.onUp(event);
+  }
+
+  s._dragStart = null;
+  s.mouseDown = false;
+  s.mouseButton = -1;
+  s.middleDown = false;
+  s.rightDown = false;
+
+  if (s.dirty) {
+    C.persistence.scheduleSave();
+  }
+}
+
+function onWheel(event) {
+  if (s.mode === '2d') {
+    C.zoom2D(event.deltaY, event.clientX, event.clientY);
+  } else if (s.mode === '3d') {
+    C.zoom3D(event.deltaY, event.clientX, event.clientY);
+  }
+}
+
+function onContextMenu(event) {
+  event.preventDefault();
+}
+
+function onResize() {
+  C.renderer.setSize(window.innerWidth, window.innerHeight);
+  if (s.mode === '2d') {
+    C.update2DCameraAspect();
+  } else {
+    C.camera3D.aspect = window.innerWidth / window.innerHeight;
+    C.camera3D.updateProjectionMatrix();
+  }
 }
 
 // ===== MAIN LOOP =====
 
-const clock = new THREE.Clock();
-
 function animate() {
   requestAnimationFrame(animate);
 
-  const delta = clock.getDelta();
-  const dt = Math.min(delta, 0.1);
+  var delta = C.clock.getDelta();
+  var dt = Math.min(delta, 0.1);
 
-  update3DCamera(dt);
+  C.update3DCamera(dt);
+  C.render();
 
-  renderer.render(scene, activeCamera);
-
-  if (state.mode === '3d') {
-    sbCursor.textContent =
-      `${state.camPos.x.toFixed(1)}, ${state.camPos.y.toFixed(1)}, ${state.camPos.z.toFixed(1)}`;
+  if (s.mode === '3d') {
+    var sb = document.getElementById('sb-cursor');
+    if (sb) sb.textContent =
+      s.camPos.x.toFixed(1) + ', ' + s.camPos.y.toFixed(1) + ', ' + s.camPos.z.toFixed(1);
   }
 }
 
 // ===== INIT =====
 
 function init() {
-  renderer.domElement.addEventListener('mousedown', onMouseDown);
+  // Load settings before building scene
+  C.ui.loadSettings();
+  C.applyAllSettings();
+
+  // Set up renderer in DOM
+  var container = document.getElementById('canvas-container');
+  if (container) container.appendChild(C.renderer.domElement);
+
+  // Event listeners
+  C.renderer.domElement.addEventListener('mousedown', onMouseDown);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
   window.addEventListener('wheel', onWheel, { passive: false });
   window.addEventListener('contextmenu', onContextMenu);
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('keydown', C.input.onKeyDown);
+  window.addEventListener('keyup', C.input.onKeyUp);
   window.addEventListener('resize', onResize);
 
-  document.getElementById('btn-export').addEventListener('click', exportJSON);
-  document.getElementById('btn-import-file').addEventListener('click', () => importInput.click());
-  document.getElementById('btn-clear').addEventListener('click', () => {
-    if (state.grid.size === 0 || confirm('Clear all cells?')) {
-      clearAllCells();
-      updateStatusBar();
+  // Export/Import/Clear buttons
+  var btnExport = document.getElementById('btn-export');
+  if (btnExport) btnExport.addEventListener('click', C.persistence.exportJSON);
+  var btnImport = document.getElementById('btn-import-file');
+  var importInput = document.getElementById('import-input');
+  if (btnImport && importInput) btnImport.addEventListener('click', function() { importInput.click(); });
+  var btnClear = document.getElementById('btn-clear');
+  if (btnClear) btnClear.addEventListener('click', function() {
+    if (s.grid.size === 0 || confirm('Clear all cells?')) {
+      C.clearAllCells();
+      C.ui.updateStatusBar();
     }
   });
-  document.getElementById('btn-tp-max').addEventListener('click', () => {
-    state.tpMaximized = !state.tpMaximized;
-    if (state.tpMaximized) {
-      texturePanel.classList.add('maximized');
-    } else {
-      texturePanel.classList.remove('maximized');
-    }
+
+  // Texture panel max/min
+  var btnTpMax = document.getElementById('btn-tp-max');
+  var tp = document.getElementById('texture-panel');
+  if (btnTpMax) btnTpMax.addEventListener('click', function() {
+    s.tpMaximized = !s.tpMaximized;
+    if (tp) { if (s.tpMaximized) tp.classList.add('maximized'); else tp.classList.remove('maximized'); }
   });
-  document.getElementById('btn-tp-min').addEventListener('click', () => {
-    state.tpOpen = false;
-    texturePanel.classList.remove('open', 'maximized');
-    state.tpMaximized = false;
+  var btnTpMin = document.getElementById('btn-tp-min');
+  if (btnTpMin) btnTpMin.addEventListener('click', function() {
+    s.tpOpen = false;
+    if (tp) { tp.classList.remove('open', 'maximized'); }
+    s.tpMaximized = false;
   });
-  document.getElementById('btn-tb-max').addEventListener('click', () => {
-    state.tbMaximized = !state.tbMaximized;
-    if (state.tbMaximized) {
-      treasureBox.classList.add('maximized');
-    } else {
-      treasureBox.classList.remove('maximized');
-    }
+
+  // Treasure box max/min
+  var btnTbMax = document.getElementById('btn-tb-max');
+  var tb = document.getElementById('treasure-box');
+  if (btnTbMax) btnTbMax.addEventListener('click', function() {
+    s.tbMaximized = !s.tbMaximized;
+    if (tb) { if (s.tbMaximized) tb.classList.add('maximized'); else tb.classList.remove('maximized'); }
   });
-  document.getElementById('btn-tb-min').addEventListener('click', () => {
-    state.tbOpen = false;
-    treasureBox.classList.remove('open', 'maximized');
-    state.tbMaximized = false;
+  var btnTbMin = document.getElementById('btn-tb-min');
+  if (btnTbMin) btnTbMin.addEventListener('click', function() {
+    s.tbOpen = false;
+    if (tb) { tb.classList.remove('open', 'maximized'); }
+    s.tbMaximized = false;
   });
-  importInput.addEventListener('change', (e) => {
+
+  // File import
+  if (importInput) importInput.addEventListener('change', function(e) {
     if (e.target.files[0]) {
-      importJSON(e.target.files[0]);
+      C.persistence.importJSON(e.target.files[0]);
       e.target.value = '';
     }
   });
 
-  // Wire tool palette buttons
-  document.querySelectorAll('#tool-palette .tpl-btn').forEach(btn => {
-    btn.addEventListener('click', () => setActiveTool(btn.dataset.tool));
+  // Tool palette buttons
+  var toolBtns = document.querySelectorAll('#tool-palette .tpl-btn');
+  toolBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() { C.setActiveTool(btn.dataset.tool); });
   });
 
-  // Wire help minimize button
-  document.getElementById('btn-help-min').addEventListener('click', toggleHelp);
+  // Help minimize
+  var btnHelpMin = document.getElementById('btn-help-min');
+  if (btnHelpMin) btnHelpMin.addEventListener('click', C.ui.toggleHelp);
 
-  buildPalette();
-  updateHelp();
-  updateStatusBar();
-  loadState();
-  updateStatusBar();
+  // Build UI
+  C.ui.buildPalette();
+  C.ui.buildControlPanel();
+  C.ui.updateHelp();
+  C.ui.updateStatusBar();
 
-  renderer.domElement.focus();
+  // Load saved map
+  C.persistence.loadState();
+  C.ui.updateStatusBar();
 
+  // Focus renderer for keyboard input
+  C.renderer.domElement.focus();
+
+  // Start loop
   animate();
 }
 
-// ===== EXPOSE FOR CONSOLE HACKING =====
+// ===== CONSOLE API =====
 
 window.CHIRAL_HAMMER = {
-  state,
-  scene,
-  renderer,
-  cellMeshes,
-  cellGroup,
-  setCell,
-  removeCell,
-  clearAllCells,
-  clearSelection,
-  commitSelection3D,
-  toggleTexturePanel,
-  toggleTreasureBox,
-  toggleWireframe,
-  toggleFog,
-  deleteSelectedCells,
-  wallMeshes,
-  wallGroup,
-  wall2DMeshes,
-  wall2DGroup,
-  setWall,
-  removeWall,
-  toggleWall,
-  wallRect,
-  orthogonalWallPath,
-  computeOrthogonalWalls,
-  computePenWalls,
-  toggleSelectAtMouse2D,
-  toggleSelectAtMouse3D,
-  deleteAtMouse3D,
-  saveState,
-  loadState,
-  exportJSON,
-  importJSON,
-  setMode,
-  setActiveTool,
-  effectiveTool,
-  get camera() { return activeCamera; },
+  get state() { return s; },
+  get scene() { return C.scene3D; },
+  get renderer() { return C.renderer; },
+  get cellMeshes() { return C.cellMeshes; },
+  get cellGroup() { return C.cellGroup; },
+  get wallMeshes() { return C.wallMeshes; },
+  get wallGroup() { return C.wallGroup; },
+  get wall2DMeshes() { return C.wall2DMeshes; },
+  get wall2DGroup() { return C.wall2DGroup; },
+  get camera() { return C.activeCamera; },
+  setCell: C.setCell,
+  removeCell: C.removeCell,
+  clearAllCells: C.clearAllCells,
+  clearSelection: C.clearSelection,
+  commitSelection3D: C.commitSelection3D,
+  toggleTexturePanel: C.ui.toggleTexturePanel,
+  toggleTreasureBox: C.ui.toggleTreasureBox,
+  toggleWireframe: C.toggleWireframe,
+  toggleFog: C.ui.toggleFog,
+  deleteSelectedCells: C.deleteSelectedCells,
+  setWall: C.setWall,
+  removeWall: C.removeWall,
+  toggleWall: C.toggleWall,
+  wallRect: C.wallRect,
+  computeOrthogonalWalls: C.computeOrthogonalWalls,
+  computePenWalls: C.computePenWalls,
+  toggleSelectAtMouse2D: C.toggleSelectAtMouse2D,
+  toggleSelectAtMouse3D: C.toggleSelectAtMouse3D,
+  deleteAtMouse3D: C.deleteAtMouse3D,
+  saveState: C.persistence.saveState,
+  loadState: C.persistence.loadState,
+  exportJSON: C.persistence.exportJSON,
+  importJSON: C.persistence.importJSON,
+  setMode: C.setMode,
+  setActiveTool: C.setActiveTool,
+  effectiveTool: C.effectiveTool,
+  undo: C.undo,
+  redo: C.redo,
 };
 
-init();
+// Go
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+})();
+
 </script>
 </body>
 </html>
