@@ -172,6 +172,7 @@ Modes:
 - Help overlay top-left always shows current-mode controls. Classic tooltip style (yellow bg, black border).
 - Single-key toggles: `Tab` for 2D/3D mode, `T` for texture library panel, `B` for treasure box / asset library.
 - Panels appear at the bottom above the status bar. T and B panels sit side by side. Appear/disappear instantly (no transitions).
+- **Tool palette** — horizontal toolbar of exclusive buttons. Only one tool active at a time. Pressed button shows `inset` border. Number keys `1`–`5` switch tools identically in 2D and 3D. Hold `Shift` for temporary select tool (release to go back). Tools: Paint, Fill, Wall, Select, House (fill + walls in one gesture).
 
 ## Roadmap
 
@@ -182,12 +183,14 @@ Modes:
 - LMB drag-fill, wireframe toggle, sky-blue fog background
 - T = texture panel (scaffold), B = treasure box
 
-### v0.8 — Walls
+### v0.8 — Walls + Tool Palette
 - Toggle wall on a cell edge — vertical quad rising perpendicular
-- Alt+click near edge in 2D to place/remove walls
+- Click near edge to place/remove walls; drag to wall a perimeter
 - Adjustable height per wall segment
 - Walls selectable and texturable like cell faces
 - Orphan cleanup: removing last adjacent cell auto-deletes wall
+- **Tool palette** — exclusive tools (Paint/Fill/Wall/Select/House) via `1`–`5` keys
+- Shift hold for temporary select tool
 
 ### v0.9 — Selection transform
 - Move selected cells/walls

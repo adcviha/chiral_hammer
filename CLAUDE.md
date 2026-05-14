@@ -25,6 +25,7 @@ Don't break these without checking first:
 - All state in one `state` object near the top of the script.
 - Banner comments (`// ===== SECTION =====`) separate major systems: setup, state, rendering, 2D input, 3D input, UI, persistence, main loop.
 - **`const` declarations before any code that uses them.** Module-level setup blocks must be ordered so no block references a `const` or `let` declared in a later block. This has caused two catastrophic crashes (selOutline before declaration, scene before renderer). The pattern: keep the declaration order as `scene → renderer → cameras → lights → objects → scratch vars`, and never inline a reference to something declared further down.
+- **Tools are exclusive, not composable.** One tool active at a time via `state.activeTool` (`'paint' | 'fill' | 'wall' | 'select' | 'house'`). Number keys `1`–`5` switch tools. `Shift` hold temporarily switches to select; release returns to previous tool. No boolean mode flags — if a behavior needs to be exclusive, it's a tool.
 - Module-level scratch Three.js objects prefixed with `_` (e.g. `_m4`, `_ndc`, `_hit`) — reused to avoid GC pressure in the render loop.
 - Functions short and named for what they do.
 - Internals exposed via `window.CHIRAL_HAMMER` for console hacking.
@@ -59,6 +60,7 @@ Live at: `https://adcviha.github.io/chiral_hammer/`
 - Status bar (mode / cell+wall count / cursor coords / save state)
 - Help overlay shows current-mode controls
 - Smooth-lerp mouselook with low sensitivity
+- **Tool palette** — exclusive tools (Paint/Fill/Wall/Select/House) via `1`–`5` keys or toolbar buttons; Shift hold for temp-select
 
 ## What's next
 

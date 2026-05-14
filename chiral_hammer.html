@@ -166,6 +166,30 @@ body {
   border: 2px outset #000080;
 }
 
+/* ===== TOOL PALETTE — exclusive tools ===== */
+#tool-palette {
+  position: fixed; top: 8px; left: 260px;
+  z-index: 10;
+  display: flex; gap: 2px;
+}
+#tool-palette .tpl-btn {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: bold;
+  background: #c0c0c0;
+  border: 2px outset #ffffff;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: #000000;
+}
+#tool-palette .tpl-btn.active {
+  border-style: inset;
+  background: #a0a0a0;
+}
+#tool-palette .tpl-btn:active {
+  border-style: inset;
+}
+
 /* ===== BUTTONS — classic 3D bevel ===== */
 #btn-row {
   position: fixed; top: 44px; right: 8px;
@@ -207,6 +231,15 @@ body {
   <button class="tool-btn" id="btn-export" title="Export JSON">EXPORT</button>
   <button class="tool-btn" id="btn-import-file" title="Import JSON">IMPORT</button>
   <button class="tool-btn" id="btn-clear" title="Clear all cells">CLEAR</button>
+</div>
+
+<!-- TOOL PALETTE -->
+<div id="tool-palette">
+  <button class="tpl-btn active" data-tool="paint" title="Paint cells (1)">1 PAINT</button>
+  <button class="tpl-btn" data-tool="fill" title="Fill rect (2)">2 FILL</button>
+  <button class="tpl-btn" data-tool="wall" title="Place walls (3)">3 WALL</button>
+  <button class="tpl-btn" data-tool="select" title="Select (4)">4 SELECT</button>
+  <button class="tpl-btn" data-tool="house" title="Fill + Walls (5)">5 HOUSE</button>
 </div>
 <input type="file" id="import-input" accept=".json" style="display:none">
 
@@ -315,10 +348,9 @@ const state = {
   wallHeight: 1.0,
   wallColor: '#8b7355',
 
-  // display
+  // display / tool
   wireframe: false,
-  fillMode: false,
-  wallMode: false,
+  activeTool: 'paint',         // 'paint' | 'fill' | 'wall' | 'select' | 'house'
 
   // save flag
   dirty: false,
@@ -721,6 +753,22 @@ function updateCellColor(gx, gz, color) {
   }
 }
 
+// ===== TOOL LOGIC =====
+
+function effectiveTool() {
+  if (state.keys['ShiftLeft'] || state.keys['ShiftRight']) return 'select';
+  return state.activeTool;
+}
+
+function setActiveTool(tool) {
+  state.activeTool = tool;
+  document.querySelectorAll('#tool-palette .tpl-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tool === tool);
+  });
+  updateHelp();
+  updateStatusBar();
+}
+
 // ===== 2D INPUT =====
 
 function getWorldFromMouse(event) {
@@ -782,7 +830,8 @@ function updateHighlight(event) {
     edgeHighlight.visible = false;
     return;
   }
-  if (state.wallMode) {
+  const tool = effectiveTool();
+  if (tool === 'wall') {
     highlightQuad.visible = false;
     updateEdgeHighlight(event);
     return;
@@ -1029,7 +1078,7 @@ function update3DCamera(deltaSec) {
     Math.cos(state.camYaw + Math.PI / 2)
   ).normalize();
 
-  if (state.keys['KeyW'] && !state.wallMode) state.camPos.addScaledVector(forward, moveSpeed);
+  if (state.keys['KeyW']) state.camPos.addScaledVector(forward, moveSpeed);
   if (state.keys['KeyS']) state.camPos.addScaledVector(forward, -moveSpeed);
   if (state.keys['KeyA']) state.camPos.addScaledVector(right, moveSpeed);
   if (state.keys['KeyD']) state.camPos.addScaledVector(right, -moveSpeed);
@@ -1151,96 +1200,134 @@ function zoom2D(delta, cursorX, cursorY) {
 
 function onMouseDown(event) {
   if (event.target !== renderer.domElement) return;
+  const tool = effectiveTool();
 
   if (state.mode === '2d') {
     if (event.button === 0) {
-      if (state.keys['ShiftLeft'] || state.keys['ShiftRight']) {
-        // Shift+LMB = select (world-space rubber-band)
+      if (state.keys['Space']) {
         state.mouseDown = true;
         state.mouseButton = 0;
-        const world = getWorldFromMouse(event);
-        if (world) {
+        return;
+      }
+
+      switch (tool) {
+        case 'paint':
+          state.mouseDown = true;
+          state.mouseButton = 0;
+          paintAtMouse(event);
+          break;
+        case 'fill':
+          state.mouseDown = true;
+          state.mouseButton = 0;
+          state._dragStart = getWorldFromMouse(event);
+          paintAtMouse(event);
+          break;
+        case 'wall':
+          state.mouseDown = true;
+          state.mouseButton = 0;
+          state._dragStart = getWorldFromMouse(event);
+          break;
+        case 'select':
+          state.mouseDown = true;
+          state.mouseButton = 0;
           clearSelection();
-          state.selecting = true;
-          state.selectStart.set(world.x, world.z);
-          state.selectEnd.set(world.x, world.z);
-          updateSelRect();
-          selRect.visible = true; selOutline.visible = true;
-        }
-      } else if (state.wallMode) {
-        // Wall mode: start drag; single click toggles on mouseup
-        state.mouseDown = true;
-        state.mouseButton = 0;
-        const world = getWorldFromMouse(event);
-        if (world) {
-          state._wallDragStart = world.clone();
-        }
-      } else if (state.keys['Space']) {
-        // Space+LMB = pan
-        state.mouseDown = true;
-        state.mouseButton = 0;
-      } else if (state.fillMode) {
-        // Fill mode: drag-fill rectangle
-        state.mouseDown = true;
-        state.mouseButton = 0;
-        state._fillStart = getWorldFromMouse(event);
-        paintAtMouse(event);
-      } else {
-        // Single cell paint
-        state.mouseDown = true;
-        state.mouseButton = 0;
-        paintAtMouse(event);
+          {
+            const world = getWorldFromMouse(event);
+            if (world) {
+              state.selecting = true;
+              state.selectStart.set(world.x, world.z);
+              state.selectEnd.set(world.x, world.z);
+              updateSelRect();
+              selRect.visible = true; selOutline.visible = true;
+            }
+          }
+          break;
+        case 'house':
+          state.mouseDown = true;
+          state.mouseButton = 0;
+          state._dragStart = getWorldFromMouse(event);
+          paintAtMouse(event);
+          break;
       }
     } else if (event.button === 2) {
-      // RMB = erase
-      state.mouseDown = true;
-      state.mouseButton = 2;
-      if (state.fillMode) {
-        state._fillStart = getWorldFromMouse(event);
-      }
-      const grid = getGridFromMouse(event);
-      if (grid && cellExists(grid.gx, grid.gz)) {
-        removeCell(grid.gx, grid.gz);
-        updateStatusBar();
+      if (tool === 'paint' || tool === 'fill') {
+        state.mouseDown = true;
+        state.mouseButton = 2;
+        if (tool === 'fill') state._dragStart = getWorldFromMouse(event);
+        const grid = getGridFromMouse(event);
+        if (grid && cellExists(grid.gx, grid.gz)) {
+          removeCell(grid.gx, grid.gz);
+          updateStatusBar();
+        }
       }
     } else if (event.button === 1) {
-      // MMB = pan
       state.middleDown = true;
       event.preventDefault();
     }
   }
 
   if (state.mode === '3d') {
-    if (event.button === 0 && (state.keys['ShiftLeft'] || state.keys['ShiftRight'])) {
-      state.mouseDown = true;
-      state.selecting = true;
-      state.selectScreenStart.set(event.clientX, event.clientY);
-      state.selectScreenEnd.set(event.clientX, event.clientY);
-      selBox.style.display = 'block';
-      selBox.style.left = event.clientX + 'px';
-      selBox.style.top = event.clientY + 'px';
-      selBox.style.width = '0px';
-      selBox.style.height = '0px';
-    } else if (event.button === 0 && state.wallMode) {
-      // Wall mode: start drag; single click toggles on mouseup
-      state.mouseDown = true;
-      state.mouseButton = 0;
-      const world = getWorldFromMouse(event);
-      if (world) {
-        state._wallDragStart = world.clone();
-      }
-    } else if (event.button === 0) {
-      // LMB = paint cell in 3D
-      state.mouseDown = true;
-      state.mouseButton = 0;
-      const world = getWorldFromMouse(event);
-      if (world) {
-        const gx = Math.floor(world.x);
-        const gz = Math.floor(world.z);
-        if (state.fillMode) state._fillStart = world;
-        if (!cellExists(gx, gz)) {
-          setCell(gx, gz, state.activeColor);
-          updateStatusBar();
+    if (event.button === 0) {
+      switch (tool) {
+        case 'paint': {
+          state.mouseDown = true;
+          state.mouseButton = 0;
+          const world = getWorldFromMouse(event);
+          if (world) {
+            const gx = Math.floor(world.x);
+            const gz = Math.floor(world.z);
+            if (!cellExists(gx, gz)) {
+              setCell(gx, gz, state.activeColor);
+              updateStatusBar();
+            }
+          }
+          break;
+        }
+        case 'fill': {
+          state.mouseDown = true;
+          state.mouseButton = 0;
+          const world = getWorldFromMouse(event);
+          state._dragStart = world;
+          if (world) {
+            const gx = Math.floor(world.x);
+            const gz = Math.floor(world.z);
+            if (!cellExists(gx, gz)) {
+              setCell(gx, gz, state.activeColor);
+              updateStatusBar();
+            }
+          }
+          break;
+        }
+        case 'wall':
+          state.mouseDown = true;
+          state.mouseButton = 0;
+          state._dragStart = getWorldFromMouse(event);
+          break;
+        case 'select':
+          state.mouseDown = true;
+          state.selecting = true;
+          state.selectScreenStart.set(event.clientX, event.clientY);
+          state.selectScreenEnd.set(event.clientX, event.clientY);
+          selBox.style.display = 'block';
+          selBox.style.left = event.clientX + 'px';
+          selBox.style.top = event.clientY + 'px';
+          selBox.style.width = '0px';
+          selBox.style.height = '0px';
+          break;
+        case 'house': {
+          state.mouseDown = true;
+          state.mouseButton = 0;
+          const world = getWorldFromMouse(event);
+          state._dragStart = world;
+          if (world) {
+            const gx = Math.floor(world.x);
+            const gz = Math.floor(world.z);
+            if (!cellExists(gx, gz)) {
+              setCell(gx, gz, state.activeColor);
+              updateStatusBar();
+            }
+          }
+          break;
         }
       }
     } else if (event.button === 2) {
@@ -1255,6 +1342,8 @@ function onMouseMove(event) {
     event.movementX || 0,
     event.movementY || 0
   );
+
+  const tool = effectiveTool();
 
   if (state.mode === '2d') {
     updateHighlight(event);
@@ -1274,21 +1363,22 @@ function onMouseMove(event) {
     }
 
     if (state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
-      if (state._fillStart) {
+      if (state._dragStart) {
         const world = getWorldFromMouse(event);
         if (world) {
-          fillRect(state._fillStart, world);
+          if (tool === 'fill') fillRect(state._dragStart, world);
+          else if (tool === 'wall') wallRect(state._dragStart, world);
+          else if (tool === 'house') { fillRect(state._dragStart, world); wallRect(state._dragStart, world); }
         }
       } else {
-        paintAtMouse(event);
+        if (tool === 'paint') paintAtMouse(event);
       }
     }
+
     if (state.mouseDown && state.mouseButton === 2 && (event.buttons & 2)) {
-      if (state._fillStart) {
+      if (state._dragStart) {
         const world = getWorldFromMouse(event);
-        if (world) {
-          eraseRect(state._fillStart, world);
-        }
+        if (world) eraseRect(state._dragStart, world);
       } else {
         const grid = getGridFromMouse(event);
         if (grid && cellExists(grid.gx, grid.gz)) {
@@ -1300,22 +1390,21 @@ function onMouseMove(event) {
   }
 
   if (state.mode === '3d') {
-    // Edge highlight when wall mode is on
-    if (state.wallMode) {
+    if (tool === 'wall') {
       updateEdgeHighlight(event);
     } else {
       edgeHighlight.visible = false;
     }
 
-    // 3D paint-on-drag
-    if (state.mouseDown && state.mouseButton === 0 && !state.selecting && !state.wallMode && (event.buttons & 1)) {
+    if (state.mouseDown && state.mouseButton === 0 && !state.selecting && (event.buttons & 1)) {
       const world = getWorldFromMouse(event);
-      if (world) {
+      if (world && state._dragStart) {
+        if (tool === 'fill') fillRect(state._dragStart, world);
+        else if (tool === 'house') { fillRect(state._dragStart, world); wallRect(state._dragStart, world); }
+      } else if (world) {
         const gx = Math.floor(world.x);
         const gz = Math.floor(world.z);
-        if (state._fillStart) {
-          fillRect(state._fillStart, world);
-        } else if (!cellExists(gx, gz)) {
+        if (tool === 'paint' && !cellExists(gx, gz)) {
           setCell(gx, gz, state.activeColor);
           updateStatusBar();
         }
@@ -1337,6 +1426,8 @@ function onMouseMove(event) {
 }
 
 function onMouseUp(event) {
+  const tool = effectiveTool();
+
   if (state.selecting) {
     if (state.mode === '3d') {
       commitSelection3D();
@@ -1348,12 +1439,12 @@ function onMouseUp(event) {
     state.selecting = false;
   }
 
-  // Wall mode: small click = toggle single edge, drag = perimeter rect
-  if (state._wallDragStart) {
+  // Wall tool: small click = toggle single edge, drag = perimeter rect
+  if (tool === 'wall' && state._dragStart) {
     const world = getWorldFromMouse(event);
     if (world) {
-      const dx = world.x - state._wallDragStart.x;
-      const dz = world.z - state._wallDragStart.z;
+      const dx = world.x - state._dragStart.x;
+      const dz = world.z - state._dragStart.z;
       if (Math.abs(dx) < 0.3 && Math.abs(dz) < 0.3) {
         const edge = getNearestEdge(event);
         if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
@@ -1361,13 +1452,12 @@ function onMouseUp(event) {
           updateStatusBar();
         }
       } else {
-        wallRect(state._wallDragStart, world);
+        wallRect(state._dragStart, world);
       }
     }
-    state._wallDragStart = null;
   }
 
-  state._fillStart = null;
+  state._dragStart = null;
   state.mouseDown = false;
   state.mouseButton = -1;
   state.middleDown = false;
@@ -1420,16 +1510,6 @@ function onKeyDown(event) {
     return;
   }
 
-  if (event.code === 'KeyF') {
-    toggleFillMode();
-    return;
-  }
-
-  if (event.code === 'KeyW') {
-    toggleWallMode();
-    return;
-  }
-
   if (event.code === 'KeyG') {
     toggleWireframe();
     return;
@@ -1450,10 +1530,27 @@ function onKeyDown(event) {
     if (state.tpOpen) { toggleTexturePanel(); return; }
     if (state.tbOpen) { toggleTreasureBox(); return; }
   }
+
+  // Tool shortcuts (1-5) — same in 2D and 3D
+  if (event.code === 'Digit1') { setActiveTool('paint'); return; }
+  if (event.code === 'Digit2') { setActiveTool('fill'); return; }
+  if (event.code === 'Digit3') { setActiveTool('wall'); return; }
+  if (event.code === 'Digit4') { setActiveTool('select'); return; }
+  if (event.code === 'Digit5') { setActiveTool('house'); return; }
+
+  // Shift temporarily switches to select tool
+  if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+    updateHelp();
+    updateStatusBar();
+  }
 }
 
 function onKeyUp(event) {
   state.keys[event.code] = false;
+  if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+    updateHelp();
+    updateStatusBar();
+  }
 }
 
 function onResize() {
@@ -1494,18 +1591,6 @@ function toggleTexturePanel() {
   }
 }
 
-function toggleFillMode() {
-  state.fillMode = !state.fillMode;
-  updateHelp();
-  updateStatusBar();
-}
-
-function toggleWallMode() {
-  state.wallMode = !state.wallMode;
-  updateHelp();
-  updateStatusBar();
-}
-
 function toggleWireframe() {
   state.wireframe = !state.wireframe;
   for (const [key, mesh] of cellMeshes) {
@@ -1534,13 +1619,13 @@ function toggleTreasureBox() {
 // ===== STATUS BAR =====
 
 function updateStatusBar() {
-  if (state.mode === '2d') {
-    if (state.wallMode) sbMode.textContent = '2D WALL';
-    else if (state.fillMode) sbMode.textContent = '2D FILL';
-    else sbMode.textContent = '2D PAINT';
+  const tool = effectiveTool();
+  const prefix = state.mode === '2d' ? '2D' : '3D';
+  const shiftActive = state.keys['ShiftLeft'] || state.keys['ShiftRight'];
+  if (shiftActive) {
+    sbMode.textContent = `${prefix} SELECT`;
   } else {
-    if (state.wallMode) sbMode.textContent = '3D WALL';
-    else sbMode.textContent = '3D FLY';
+    sbMode.textContent = `${prefix} ${tool.toUpperCase()}`;
   }
   sbCells.textContent = state.grid.size + (state.walls.size ? ` +${state.walls.size}w` : '');
 }
@@ -1548,39 +1633,42 @@ function updateStatusBar() {
 // ===== HELP OVERLAY =====
 
 function updateHelp() {
+  const tool = effectiveTool();
+  const toolLabel = tool.toUpperCase();
+  const shiftActive = state.keys['ShiftLeft'] || state.keys['ShiftRight'];
+
+  const toolActions = {
+    paint:  { lmb: 'paint cell', rmb: 'erase cell' },
+    fill:   { lmb: 'drag fill rect', rmb: 'drag erase rect' },
+    wall:   { lmb: 'click edge / drag perimeter', rmb: '—' },
+    select: { lmb: 'drag rubber-band select', rmb: '—' },
+    house:  { lmb: 'drag fill + walls', rmb: '—' },
+  };
+  const act = toolActions[tool];
+
   if (state.mode === '2d') {
-    helpMode.textContent = '2D PAINT';
-    const fillLabel = state.fillMode ? 'FILL [ON]' : 'FILL [OFF]';
+    helpMode.textContent = shiftActive ? '2D — SELECT (Shift)' : `2D — ${toolLabel}`;
     helpKeys.innerHTML = `
-      <span class="key">LMB</span> <span class="dim">${state.fillMode ? 'drag fill rect' : 'paint cell'}</span><br>
-      <span class="key">RMB</span> <span class="dim">${state.fillMode ? 'drag erase rect' : 'erase cell'}</span><br>
-      <span class="key">W</span> <span class="dim">${state.wallMode ? 'WALL [ON]' : 'WALL [OFF]'}</span><br>
-      <span class="key">Shift+LMB</span> <span class="dim">select cells</span><br>
-      <span class="key">Space+LMB</span> <span class="dim">pan</span><br>
-      <span class="key">MMB drag</span> <span class="dim">pan</span><br>
+      <span class="key">LMB</span> <span class="dim">${act.lmb}</span><br>
+      <span class="key">RMB</span> <span class="dim">${act.rmb}</span><br>
+      <span class="key">Shift hold</span> <span class="dim">SELECT</span><br>
+      <span class="key">Space+LMB</span> <span class="dim">pan</span> / <span class="key">MMB</span> <span class="dim">pan</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom</span><br>
-      <span class="key">F</span> <span class="dim">${fillLabel}</span><br>
-      <span class="key">G</span> <span class="dim">wireframe</span><br>
-      <span class="key">Del</span> <span class="dim">delete selected</span><br>
-      <span class="key">Tab</span> <span class="dim">switch to 3D</span><br>
-      <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
+      <span class="key">1</span><span class="dim">Paint</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
+      <span class="key">G</span> <span class="dim">wireframe</span> <span class="key">Del</span> <span class="dim">delete</span><br>
+      <span class="key">Tab</span> <span class="dim">3D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
   } else {
-    helpMode.textContent = '3D FLY';
+    helpMode.textContent = shiftActive ? '3D — SELECT (Shift)' : `3D — ${toolLabel}`;
     helpKeys.innerHTML = `
-      <span class="key">WASD</span> <span class="dim">move</span><br>
-      <span class="key">Q/E</span> <span class="dim">down / up</span><br>
-      <span class="key">Shift</span> <span class="dim">speed boost</span><br>
-      <span class="key">Arrows</span> <span class="dim">look around</span><br>
-      <span class="key">RMB hold</span> <span class="dim">mouse look</span><br>
-      <span class="key">Scroll</span> <span class="dim">zoom to cursor</span><br>
-      <span class="key">W</span> <span class="dim">${state.wallMode ? 'WALL [ON]' : 'WALL [OFF]'}</span><br>
-      <span class="key">LMB</span> <span class="dim">${state.wallMode ? 'toggle wall / drag perimeter' : 'paint cell on ground'}</span><br>
-      <span class="key">Shift+LMB</span> <span class="dim">select cells/walls</span><br>
-      <span class="key">G</span> <span class="dim">wireframe</span><br>
-      <span class="key">Del</span> <span class="dim">delete selected</span><br>
-      <span class="key">Tab</span> <span class="dim">switch to 2D</span><br>
-      <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
+      <span class="key">WASD</span> <span class="dim">move</span> <span class="key">Q/E</span> <span class="dim">up/down</span><br>
+      <span class="key">Arrows</span> <span class="dim">look</span> <span class="key">RMB</span> <span class="dim">mouselook</span><br>
+      <span class="key">Scroll</span> <span class="dim">zoom to cursor</span> <span class="key">Shift</span> <span class="dim">boost</span><br>
+      <span class="key">LMB</span> <span class="dim">${act.lmb}</span><br>
+      <span class="key">Shift hold</span> <span class="dim">SELECT</span><br>
+      <span class="key">1</span><span class="dim">Paint</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
+      <span class="key">G</span> <span class="dim">wireframe</span> <span class="key">Del</span> <span class="dim">delete</span><br>
+      <span class="key">Tab</span> <span class="dim">2D</span> <span class="key">T</span> <span class="dim">textures</span> <span class="key">B</span> <span class="dim">treasure</span>
     `;
   }
 }
@@ -1761,6 +1849,11 @@ function init() {
     }
   });
 
+  // Wire tool palette buttons
+  document.querySelectorAll('#tool-palette .tpl-btn').forEach(btn => {
+    btn.addEventListener('click', () => setActiveTool(btn.dataset.tool));
+  });
+
   buildPalette();
   updateHelp();
   updateStatusBar();
@@ -1788,8 +1881,6 @@ window.CHIRAL_HAMMER = {
   toggleTexturePanel,
   toggleTreasureBox,
   toggleWireframe,
-  toggleFillMode,
-  toggleWallMode,
   deleteSelectedCells,
   wallMeshes,
   wallGroup,
@@ -1803,6 +1894,8 @@ window.CHIRAL_HAMMER = {
   exportJSON,
   importJSON,
   setMode,
+  setActiveTool,
+  effectiveTool,
   get camera() { return activeCamera; },
 };
 
