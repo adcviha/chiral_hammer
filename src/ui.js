@@ -276,7 +276,7 @@ C.ui.resetSettings = function() {
     ambientIntensity: 1.5, dirIntensity: 2.0, dirAzimuth: 45, dirAltitude: 60,
     dirColor: '#ffffff', fogEnabled: true, fogNear: 30, fogFar: 80,
     fogColor: '#4a6a7a', fov: 60, flySpeed: 5, lookSensitivity: 0.25,
-    zoomSpeed: 0.05, gridSize: 200, gridOpacity: 1.0, gridColor: '#5a6a7a',
+    zoomSpeed: 0.05, gridSize: 200, gridOpacity: 1.0, gridColor: '#8a9aaa',
     pixelRatioCap: 2, clearColor: '#4a6a7a', defaultWallHeight: 1.0,
     defaultWallColor: '#8b7355',
   };

@@ -81,7 +81,7 @@ C.state = {
     zoomSpeed: 0.05,
     gridSize: 200,
     gridOpacity: 1.0,
-    gridColor: '#5a6a7a',
+    gridColor: '#8a9aaa',
     pixelRatioCap: 2,
     clearColor: '#4a6a7a',
     defaultWallHeight: 1.0,
@@ -132,7 +132,7 @@ C.setCell = function(gx, gz, color) {
   const key = C.gridKey(gx, gz);
   const old = C.state.grid.get(key);
   C.state.grid.set(key, { color, height: 0 });
-  C.scene.addCellMesh(gx, gz, color);
+  C.addCellMesh(gx, gz, color);
   C.markDirty();
   C.pushUndo({
     type: 'setCell',
@@ -142,7 +142,7 @@ C.setCell = function(gx, gz, color) {
     undo: function() {
       if (this.oldColor) {
         C.state.grid.set(C.gridKey(this.gx, this.gz), { color: this.oldColor, height: 0 });
-        C.scene.addCellMesh(this.gx, this.gz, this.oldColor);
+        C.addCellMesh(this.gx, this.gz, this.oldColor);
       } else {
         C.removeCellSilent(this.gx, this.gz);
       }
@@ -150,7 +150,7 @@ C.setCell = function(gx, gz, color) {
     },
     redo: function() {
       C.state.grid.set(C.gridKey(this.gx, this.gz), { color: this.newColor, height: 0 });
-      C.scene.addCellMesh(this.gx, this.gz, this.newColor);
+      C.addCellMesh(this.gx, this.gz, this.newColor);
       C.markDirty();
     }
   });
@@ -159,7 +159,7 @@ C.setCell = function(gx, gz, color) {
 C.setCellSilent = function(gx, gz, color) {
   const key = C.gridKey(gx, gz);
   C.state.grid.set(key, { color, height: 0 });
-  C.scene.addCellMesh(gx, gz, color);
+  C.addCellMesh(gx, gz, color);
 };
 
 C.removeCell = function(gx, gz) {
@@ -167,7 +167,7 @@ C.removeCell = function(gx, gz) {
   const old = C.state.grid.get(key);
   if (!old) return;
   C.state.grid.delete(key);
-  C.scene.removeCellMesh(gx, gz);
+  C.removeCellMesh(gx, gz);
   C.cleanOrphanWallsAround(gx, gz);
   C.markDirty();
   C.pushUndo({
@@ -188,18 +188,18 @@ C.removeCell = function(gx, gz) {
 C.removeCellSilent = function(gx, gz) {
   const key = C.gridKey(gx, gz);
   C.state.grid.delete(key);
-  C.scene.removeCellMesh(gx, gz);
+  C.removeCellMesh(gx, gz);
   C.cleanOrphanWallsAround(gx, gz);
 };
 
 C.clearAllCells = function() {
   for (const key of C.state.grid.keys()) {
     const [gx, gz] = key.split(',').map(Number);
-    C.scene.removeCellMesh(gx, gz);
+    C.removeCellMesh(gx, gz);
   }
   C.state.grid.clear();
   for (const key of C.state.walls.keys()) {
-    C.scene.removeWallMeshByKey(key);
+    C.removeWallMeshByKey(key);
   }
   C.state.walls.clear();
   C.state.undoStack = [];
@@ -216,7 +216,7 @@ C.setWall = function(gx, gz, dir, color, height) {
   const parsed = C.parseWallKey(key);
   const old = C.state.walls.get(key);
   C.state.walls.set(key, { color, height });
-  C.scene.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
+  C.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
   C.markDirty();
   C.pushUndo({
     type: 'setWall',
@@ -243,7 +243,7 @@ C.setWallSilent = function(gx, gz, dir, color, height) {
   const key = C.canonicalWallKey(gx, gz, dir);
   const parsed = C.parseWallKey(key);
   C.state.walls.set(key, { color, height });
-  C.scene.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
+  C.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
 };
 
 C.removeWall = function(gx, gz, dir) {
@@ -251,7 +251,7 @@ C.removeWall = function(gx, gz, dir) {
   const old = C.state.walls.get(key);
   if (!old) return;
   C.state.walls.delete(key);
-  C.scene.removeWallMeshByKey(key);
+  C.removeWallMeshByKey(key);
   C.markDirty();
   C.pushUndo({
     type: 'removeWall',
@@ -271,7 +271,7 @@ C.removeWall = function(gx, gz, dir) {
 C.removeWallSilent = function(gx, gz, dir) {
   const key = C.canonicalWallKey(gx, gz, dir);
   C.state.walls.delete(key);
-  C.scene.removeWallMeshByKey(key);
+  C.removeWallMeshByKey(key);
 };
 
 C.toggleWall = function(gx, gz, dir) {
@@ -296,7 +296,7 @@ C.cleanOrphanWallsAround = function(gx, gz) {
   for (const { cgx, cgz, cdir } of edges) {
     const key = C.wallKey(cgx, cgz, cdir);
     if (C.state.walls.has(key) && !C.edgeHasAdjacentCell(cgx, cgz, cdir)) {
-      C.scene.removeWallMeshByKey(key);
+      C.removeWallMeshByKey(key);
       C.state.walls.delete(key);
     }
   }

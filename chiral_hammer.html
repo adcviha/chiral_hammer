@@ -470,7 +470,7 @@ C.state = {
     zoomSpeed: 0.05,
     gridSize: 200,
     gridOpacity: 1.0,
-    gridColor: '#5a6a7a',
+    gridColor: '#8a9aaa',
     pixelRatioCap: 2,
     clearColor: '#4a6a7a',
     defaultWallHeight: 1.0,
@@ -521,7 +521,7 @@ C.setCell = function(gx, gz, color) {
   const key = C.gridKey(gx, gz);
   const old = C.state.grid.get(key);
   C.state.grid.set(key, { color, height: 0 });
-  C.scene.addCellMesh(gx, gz, color);
+  C.addCellMesh(gx, gz, color);
   C.markDirty();
   C.pushUndo({
     type: 'setCell',
@@ -531,7 +531,7 @@ C.setCell = function(gx, gz, color) {
     undo: function() {
       if (this.oldColor) {
         C.state.grid.set(C.gridKey(this.gx, this.gz), { color: this.oldColor, height: 0 });
-        C.scene.addCellMesh(this.gx, this.gz, this.oldColor);
+        C.addCellMesh(this.gx, this.gz, this.oldColor);
       } else {
         C.removeCellSilent(this.gx, this.gz);
       }
@@ -539,7 +539,7 @@ C.setCell = function(gx, gz, color) {
     },
     redo: function() {
       C.state.grid.set(C.gridKey(this.gx, this.gz), { color: this.newColor, height: 0 });
-      C.scene.addCellMesh(this.gx, this.gz, this.newColor);
+      C.addCellMesh(this.gx, this.gz, this.newColor);
       C.markDirty();
     }
   });
@@ -548,7 +548,7 @@ C.setCell = function(gx, gz, color) {
 C.setCellSilent = function(gx, gz, color) {
   const key = C.gridKey(gx, gz);
   C.state.grid.set(key, { color, height: 0 });
-  C.scene.addCellMesh(gx, gz, color);
+  C.addCellMesh(gx, gz, color);
 };
 
 C.removeCell = function(gx, gz) {
@@ -556,7 +556,7 @@ C.removeCell = function(gx, gz) {
   const old = C.state.grid.get(key);
   if (!old) return;
   C.state.grid.delete(key);
-  C.scene.removeCellMesh(gx, gz);
+  C.removeCellMesh(gx, gz);
   C.cleanOrphanWallsAround(gx, gz);
   C.markDirty();
   C.pushUndo({
@@ -577,18 +577,18 @@ C.removeCell = function(gx, gz) {
 C.removeCellSilent = function(gx, gz) {
   const key = C.gridKey(gx, gz);
   C.state.grid.delete(key);
-  C.scene.removeCellMesh(gx, gz);
+  C.removeCellMesh(gx, gz);
   C.cleanOrphanWallsAround(gx, gz);
 };
 
 C.clearAllCells = function() {
   for (const key of C.state.grid.keys()) {
     const [gx, gz] = key.split(',').map(Number);
-    C.scene.removeCellMesh(gx, gz);
+    C.removeCellMesh(gx, gz);
   }
   C.state.grid.clear();
   for (const key of C.state.walls.keys()) {
-    C.scene.removeWallMeshByKey(key);
+    C.removeWallMeshByKey(key);
   }
   C.state.walls.clear();
   C.state.undoStack = [];
@@ -605,7 +605,7 @@ C.setWall = function(gx, gz, dir, color, height) {
   const parsed = C.parseWallKey(key);
   const old = C.state.walls.get(key);
   C.state.walls.set(key, { color, height });
-  C.scene.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
+  C.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
   C.markDirty();
   C.pushUndo({
     type: 'setWall',
@@ -632,7 +632,7 @@ C.setWallSilent = function(gx, gz, dir, color, height) {
   const key = C.canonicalWallKey(gx, gz, dir);
   const parsed = C.parseWallKey(key);
   C.state.walls.set(key, { color, height });
-  C.scene.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
+  C.addWallMesh(parsed.gx, parsed.gz, parsed.dir, color, height);
 };
 
 C.removeWall = function(gx, gz, dir) {
@@ -640,7 +640,7 @@ C.removeWall = function(gx, gz, dir) {
   const old = C.state.walls.get(key);
   if (!old) return;
   C.state.walls.delete(key);
-  C.scene.removeWallMeshByKey(key);
+  C.removeWallMeshByKey(key);
   C.markDirty();
   C.pushUndo({
     type: 'removeWall',
@@ -660,7 +660,7 @@ C.removeWall = function(gx, gz, dir) {
 C.removeWallSilent = function(gx, gz, dir) {
   const key = C.canonicalWallKey(gx, gz, dir);
   C.state.walls.delete(key);
-  C.scene.removeWallMeshByKey(key);
+  C.removeWallMeshByKey(key);
 };
 
 C.toggleWall = function(gx, gz, dir) {
@@ -685,7 +685,7 @@ C.cleanOrphanWallsAround = function(gx, gz) {
   for (const { cgx, cgz, cdir } of edges) {
     const key = C.wallKey(cgx, cgz, cdir);
     if (C.state.walls.has(key) && !C.edgeHasAdjacentCell(cgx, cgz, cdir)) {
-      C.scene.removeWallMeshByKey(key);
+      C.removeWallMeshByKey(key);
       C.state.walls.delete(key);
     }
   }
@@ -775,7 +775,7 @@ C.scene3D.add(C.dirLight);
 
 // ===== GRID =====
 
-C.gridHelper = new THREE.GridHelper(200, 200, 0x5a6a7a, 0x4a5a6a);
+C.gridHelper = new THREE.GridHelper(200, 200, 0x8a9aaa, 0x7a8a9a);
 C.gridHelper.position.y = 0.001;
 C.scene3D.add(C.gridHelper);
 
@@ -1099,9 +1099,20 @@ C.applyFog = function() {
 
 C.applyGrid = function() {
   const st = s.settings;
-  C.gridHelper.material.color.set(st.gridColor);
+  // GridHelper uses vertexColors — material.color is overridden.
+  // Rebuild the grid helper to change colors.
+  C.scene3D.remove(C.gridHelper);
+  if (C.gridHelper.geometry) C.gridHelper.geometry.dispose();
+  if (C.gridHelper.material) C.gridHelper.material.dispose();
+  const colorNum = parseInt(st.gridColor.replace('#', ''), 16);
+  const gridNum = Math.max(0, colorNum - 0x101010);
+  C.gridHelper = new THREE.GridHelper(
+    st.gridSize, st.gridSize, colorNum, gridNum
+  );
+  C.gridHelper.position.y = 0.001;
   C.gridHelper.material.opacity = st.gridOpacity;
   C.gridHelper.material.transparent = true;
+  C.scene3D.add(C.gridHelper);
 };
 
 C.applyClearColor = function() {
@@ -1797,7 +1808,7 @@ C.tools.wall = {
       if (world) {
         // Clear previous drag walls
         for (const key of s._dragWallKeys) {
-          C.scene.removeWallMeshByKey(key);
+          C.removeWallMeshByKey(key);
           s.walls.delete(key);
         }
         s._dragWallKeys.clear();
@@ -2204,7 +2215,7 @@ C.deleteSelectedCells = function() {
   }
   s.selectedCells.clear();
   for (const key of s.selectedWalls) {
-    C.scene.removeWallMeshByKey(key);
+    C.removeWallMeshByKey(key);
     s.walls.delete(key);
   }
   s.selectedWalls.clear();
@@ -2576,7 +2587,7 @@ C.ui.resetSettings = function() {
     ambientIntensity: 1.5, dirIntensity: 2.0, dirAzimuth: 45, dirAltitude: 60,
     dirColor: '#ffffff', fogEnabled: true, fogNear: 30, fogFar: 80,
     fogColor: '#4a6a7a', fov: 60, flySpeed: 5, lookSensitivity: 0.25,
-    zoomSpeed: 0.05, gridSize: 200, gridOpacity: 1.0, gridColor: '#5a6a7a',
+    zoomSpeed: 0.05, gridSize: 200, gridOpacity: 1.0, gridColor: '#8a9aaa',
     pixelRatioCap: 2, clearColor: '#4a6a7a', defaultWallHeight: 1.0,
     defaultWallColor: '#8b7355',
   };

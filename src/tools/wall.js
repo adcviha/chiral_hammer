@@ -44,7 +44,7 @@ C.tools.wall = {
       if (world) {
         // Clear previous drag walls
         for (const key of s._dragWallKeys) {
-          C.scene.removeWallMeshByKey(key);
+          C.removeWallMeshByKey(key);
           s.walls.delete(key);
         }
         s._dragWallKeys.clear();

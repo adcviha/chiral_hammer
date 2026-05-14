@@ -40,7 +40,7 @@ C.scene3D.add(C.dirLight);
 
 // ===== GRID =====
 
-C.gridHelper = new THREE.GridHelper(200, 200, 0x5a6a7a, 0x4a5a6a);
+C.gridHelper = new THREE.GridHelper(200, 200, 0x8a9aaa, 0x7a8a9a);
 C.gridHelper.position.y = 0.001;
 C.scene3D.add(C.gridHelper);
 
@@ -364,9 +364,20 @@ C.applyFog = function() {
 
 C.applyGrid = function() {
   const st = s.settings;
-  C.gridHelper.material.color.set(st.gridColor);
+  // GridHelper uses vertexColors — material.color is overridden.
+  // Rebuild the grid helper to change colors.
+  C.scene3D.remove(C.gridHelper);
+  if (C.gridHelper.geometry) C.gridHelper.geometry.dispose();
+  if (C.gridHelper.material) C.gridHelper.material.dispose();
+  const colorNum = parseInt(st.gridColor.replace('#', ''), 16);
+  const gridNum = Math.max(0, colorNum - 0x101010);
+  C.gridHelper = new THREE.GridHelper(
+    st.gridSize, st.gridSize, colorNum, gridNum
+  );
+  C.gridHelper.position.y = 0.001;
   C.gridHelper.material.opacity = st.gridOpacity;
   C.gridHelper.material.transparent = true;
+  C.scene3D.add(C.gridHelper);
 };
 
 C.applyClearColor = function() {

@@ -304,7 +304,7 @@ C.deleteSelectedCells = function() {
   }
   s.selectedCells.clear();
   for (const key of s.selectedWalls) {
-    C.scene.removeWallMeshByKey(key);
+    C.removeWallMeshByKey(key);
     s.walls.delete(key);
   }
   s.selectedWalls.clear();
