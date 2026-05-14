@@ -727,8 +727,8 @@ function updateWallSelectionVisual(key, selected) {
   const mesh = wallMeshes.get(key);
   if (!mesh) return;
   if (selected) {
-    mesh.material.emissive = new THREE.Color(0x444400);
-    mesh.material.emissiveIntensity = 0.6;
+    mesh.material.emissive = new THREE.Color(0xaaaa00);
+    mesh.material.emissiveIntensity = 1.0;
   } else {
     mesh.material.emissive = new THREE.Color(0x000000);
     mesh.material.emissiveIntensity = 0;
@@ -834,7 +834,8 @@ function paintAtMouse(event) {
   if (state.mode !== '2d') return;
 
   if (event.buttons & 1) {
-    if (!cellExists(grid.gx, grid.gz)) {
+    const existing = getCell(grid.gx, grid.gz);
+    if (!existing || existing.color !== state.activeColor) {
       setCell(grid.gx, grid.gz, state.activeColor);
       updateStatusBar();
     }
@@ -931,8 +932,9 @@ function wallRect(worldA, worldB) {
   updateStatusBar();
 }
 
-// Orthogonal wall path: L-shaped from start to end, horizontal-first
-function orthogonalWallPath(worldA, worldB) {
+// Compute orthogonal wall path: returns array of {gx, gz, dir}
+function computeOrthogonalWalls(worldA, worldB) {
+  const walls = [];
   const gx1 = Math.floor(worldA.x);
   const gz1 = Math.floor(worldA.z);
   const gx2 = Math.floor(worldB.x);
@@ -943,7 +945,7 @@ function orthogonalWallPath(worldA, worldB) {
     const gxMin = Math.min(gx1, gx2);
     const gxMax = Math.max(gx1, gx2);
     for (let gx = gxMin; gx < gxMax; gx++) {
-      setWall(gx, gz1, 'N', state.wallColor, state.wallHeight);
+      walls.push({ gx, gz: gz1, dir: 'N' });
     }
   }
 
@@ -952,10 +954,19 @@ function orthogonalWallPath(worldA, worldB) {
     const gzMin = Math.min(gz1, gz2);
     const gzMax = Math.max(gz1, gz2);
     for (let gz = gzMin; gz < gzMax; gz++) {
-      setWall(gx2 - 1, gz, 'E', state.wallColor, state.wallHeight);
+      walls.push({ gx: gx2 - 1, gz, dir: 'E' });
     }
   }
 
+  return walls;
+}
+
+// Orthogonal wall path: L-shaped from start to end, horizontal-first
+function orthogonalWallPath(worldA, worldB) {
+  const walls = computeOrthogonalWalls(worldA, worldB);
+  for (const w of walls) {
+    setWall(w.gx, w.gz, w.dir, state.wallColor, state.wallHeight);
+  }
   updateStatusBar();
 }
 
@@ -1082,6 +1093,79 @@ function clearSelection() {
     updateWallSelectionVisual(key, false);
   }
   state.selectedWalls.clear();
+}
+
+function toggleSelectAtMouse2D(event) {
+  // Check cell under cursor
+  const grid = getGridFromMouse(event);
+  if (grid && cellExists(grid.gx, grid.gz)) {
+    const key = gridKey(grid.gx, grid.gz);
+    if (state.selectedCells.has(key)) {
+      state.selectedCells.delete(key);
+      updateCellSelectionVisual(key, false);
+    } else {
+      state.selectedCells.add(key);
+      updateCellSelectionVisual(key, true);
+    }
+    return;
+  }
+  // Check wall under cursor
+  const edge = getNearestEdge(event);
+  if (edge) {
+    const key = canonicalWallKey(edge.gx, edge.gz, edge.dir);
+    if (state.walls.has(key)) {
+      if (state.selectedWalls.has(key)) {
+        state.selectedWalls.delete(key);
+        updateWallSelectionVisual(key, false);
+      } else {
+        state.selectedWalls.add(key);
+        updateWallSelectionVisual(key, true);
+      }
+      return;
+    }
+  }
+  // Empty space — deselect all
+  clearSelection();
+}
+
+function toggleSelectAtMouse3D(event) {
+  _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
+  _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  _raycaster.setFromCamera(_ndc, state.camera3D);
+
+  // Check cell meshes
+  const cellHits = _raycaster.intersectObjects(Array.from(cellMeshes.values()));
+  if (cellHits.length > 0) {
+    const key = cellHits[0].object.name.replace('cell-', '');
+    if (state.grid.has(key)) {
+      if (state.selectedCells.has(key)) {
+        state.selectedCells.delete(key);
+        updateCellSelectionVisual(key, false);
+      } else {
+        state.selectedCells.add(key);
+        updateCellSelectionVisual(key, true);
+      }
+      return;
+    }
+  }
+
+  // Check wall meshes
+  const wallHits = _raycaster.intersectObjects(Array.from(wallMeshes.values()));
+  if (wallHits.length > 0) {
+    const key = wallHits[0].object.name.replace('wall-', '');
+    if (state.walls.has(key)) {
+      if (state.selectedWalls.has(key)) {
+        state.selectedWalls.delete(key);
+        updateWallSelectionVisual(key, false);
+      } else {
+        state.selectedWalls.add(key);
+        updateWallSelectionVisual(key, true);
+      }
+      return;
+    }
+  }
+
+  clearSelection();
 }
 
 function deleteSelectedCells() {
@@ -1293,11 +1377,11 @@ function onMouseDown(event) {
           state.mouseDown = true;
           state.mouseButton = 0;
           state._dragStart = getWorldFromMouse(event);
+          state._dragWallKeys = new Set();
           break;
         case 'select':
           state.mouseDown = true;
           state.mouseButton = 0;
-          clearSelection();
           {
             const world = getWorldFromMouse(event);
             if (world) {
@@ -1343,7 +1427,8 @@ function onMouseDown(event) {
           if (world) {
             const gx = Math.floor(world.x);
             const gz = Math.floor(world.z);
-            if (!cellExists(gx, gz)) {
+            const existing = getCell(gx, gz);
+            if (!existing || existing.color !== state.activeColor) {
               setCell(gx, gz, state.activeColor);
               updateStatusBar();
             }
@@ -1369,6 +1454,7 @@ function onMouseDown(event) {
           state.mouseDown = true;
           state.mouseButton = 0;
           state._dragStart = getWorldFromMouse(event);
+          state._dragWallKeys = new Set();
           break;
         case 'select':
           state.mouseDown = true;
@@ -1434,7 +1520,19 @@ function onMouseMove(event) {
         const world = getWorldFromMouse(event);
         if (world) {
           if (tool === 'fill') fillRect(state._dragStart, world);
-          else if (tool === 'wall') showDragPreview(state._dragStart, world);
+          else if (tool === 'wall') {
+            for (const key of state._dragWallKeys) {
+              removeWallMeshByKey(key);
+              state.walls.delete(key);
+            }
+            state._dragWallKeys.clear();
+            const walls = computeOrthogonalWalls(state._dragStart, world);
+            for (const w of walls) {
+              setWall(w.gx, w.gz, w.dir, state.wallColor, state.wallHeight);
+              state._dragWallKeys.add(canonicalWallKey(w.gx, w.gz, w.dir));
+            }
+            updateStatusBar();
+          }
           else if (tool === 'house') { showDragPreview(state._dragStart, world); }
         }
       } else {
@@ -1467,14 +1565,29 @@ function onMouseMove(event) {
       const world = getWorldFromMouse(event);
       if (world && state._dragStart) {
         if (tool === 'fill') fillRect(state._dragStart, world);
-        else if (tool === 'wall') showDragPreview(state._dragStart, world);
+        else if (tool === 'wall') {
+          for (const key of state._dragWallKeys) {
+            removeWallMeshByKey(key);
+            state.walls.delete(key);
+          }
+          state._dragWallKeys.clear();
+          const walls = computeOrthogonalWalls(state._dragStart, world);
+          for (const w of walls) {
+            setWall(w.gx, w.gz, w.dir, state.wallColor, state.wallHeight);
+            state._dragWallKeys.add(canonicalWallKey(w.gx, w.gz, w.dir));
+          }
+          updateStatusBar();
+        }
         else if (tool === 'house') { showDragPreview(state._dragStart, world); }
       } else if (world) {
         const gx = Math.floor(world.x);
         const gz = Math.floor(world.z);
-        if (tool === 'paint' && !cellExists(gx, gz)) {
-          setCell(gx, gz, state.activeColor);
-          updateStatusBar();
+        if (tool === 'paint') {
+          const existing = getCell(gx, gz);
+          if (!existing || existing.color !== state.activeColor) {
+            setCell(gx, gz, state.activeColor);
+            updateStatusBar();
+          }
         }
       }
     }
@@ -1498,18 +1611,29 @@ function onMouseUp(event) {
 
   if (state.selecting) {
     if (state.mode === '3d') {
-      commitSelection3D();
+      const dx = Math.abs(state.selectScreenEnd.x - state.selectScreenStart.x);
+      const dy = Math.abs(state.selectScreenEnd.y - state.selectScreenStart.y);
+      if (dx < 3 && dy < 3) {
+        toggleSelectAtMouse3D(event);
+      } else {
+        commitSelection3D();
+      }
       selBox.style.display = 'none';
     } else {
-      commitSelection();
+      const dx = Math.abs(state.selectEnd.x - state.selectStart.x);
+      const dy = Math.abs(state.selectEnd.y - state.selectStart.y);
+      if (dx < 0.2 && dy < 0.2) {
+        toggleSelectAtMouse2D(event);
+      } else {
+        commitSelection();
+      }
       selRect.visible = false; selOutline.visible = false;
     }
     state.selecting = false;
   }
 
-  // Wall tool: small click = toggle single edge, drag = orthogonal path
+  // Wall tool: small click = toggle single edge; drag walls already placed in real-time
   if (tool === 'wall' && state._dragStart) {
-    hideDragPreview();
     const world = getWorldFromMouse(event);
     if (world) {
       const dx = world.x - state._dragStart.x;
@@ -1520,10 +1644,9 @@ function onMouseUp(event) {
           toggleWall(edge.gx, edge.gz, edge.dir);
           updateStatusBar();
         }
-      } else {
-        orthogonalWallPath(state._dragStart, world);
       }
     }
+    state._dragWallKeys = null;
   }
 
   // House tool: fill cells + wall perimeter, atomic on mouseup
@@ -1993,6 +2116,9 @@ window.CHIRAL_HAMMER = {
   toggleWall,
   wallRect,
   orthogonalWallPath,
+  computeOrthogonalWalls,
+  toggleSelectAtMouse2D,
+  toggleSelectAtMouse3D,
   saveState,
   loadState,
   exportJSON,
