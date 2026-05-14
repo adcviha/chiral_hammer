@@ -693,7 +693,7 @@ function addCellMesh(gx, gz, color) {
     removeCellMesh(gx, gz);
   }
 
-  const mat = new THREE.MeshStandardMaterial({ color: '#222222', roughness: 0.85, side: THREE.DoubleSide });
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide });
   if (state.wireframe) mat.wireframe = true;
   const mesh = new THREE.Mesh(_cellGeo, mat);
   mesh.position.set(gx + 0.5, 0.002, gz + 0.5);
@@ -1029,7 +1029,7 @@ function update3DCamera(deltaSec) {
     Math.cos(state.camYaw + Math.PI / 2)
   ).normalize();
 
-  if (state.keys['KeyW']) state.camPos.addScaledVector(forward, moveSpeed);
+  if (state.keys['KeyW'] && !state.wallMode) state.camPos.addScaledVector(forward, moveSpeed);
   if (state.keys['KeyS']) state.camPos.addScaledVector(forward, -moveSpeed);
   if (state.keys['KeyA']) state.camPos.addScaledVector(right, moveSpeed);
   if (state.keys['KeyD']) state.camPos.addScaledVector(right, -moveSpeed);
@@ -1221,12 +1221,13 @@ function onMouseDown(event) {
       selBox.style.top = event.clientY + 'px';
       selBox.style.width = '0px';
       selBox.style.height = '0px';
-    } else if (event.button === 0 && (state.keys['AltLeft'] || state.keys['AltRight'])) {
-      // Alt+LMB = toggle wall in 3D
-      const edge = getNearestEdge(event);
-      if (edge && edgeHasAdjacentCell(edge.gx, edge.gz, edge.dir)) {
-        toggleWall(edge.gx, edge.gz, edge.dir);
-        updateStatusBar();
+    } else if (event.button === 0 && state.wallMode) {
+      // Wall mode: start drag; single click toggles on mouseup
+      state.mouseDown = true;
+      state.mouseButton = 0;
+      const world = getWorldFromMouse(event);
+      if (world) {
+        state._wallDragStart = world.clone();
       }
     } else if (event.button === 0) {
       // LMB = paint cell in 3D
@@ -1267,14 +1268,6 @@ function onMouseMove(event) {
       return;
     }
 
-    if (state.wallMode && state._wallDragStart && state.mouseDown && state.mouseButton === 0 && (event.buttons & 1)) {
-      const world = getWorldFromMouse(event);
-      if (world) {
-        wallRect(state._wallDragStart, world);
-      }
-      return;
-    }
-
     if (state.middleDown || (state.keys['Space'] && state.mouseDown)) {
       pan2D(event.movementX, event.movementY);
       return;
@@ -1307,15 +1300,15 @@ function onMouseMove(event) {
   }
 
   if (state.mode === '3d') {
-    // Edge highlight when Alt held
-    if (state.keys['AltLeft'] || state.keys['AltRight']) {
+    // Edge highlight when wall mode is on
+    if (state.wallMode) {
       updateEdgeHighlight(event);
     } else {
       edgeHighlight.visible = false;
     }
 
     // 3D paint-on-drag
-    if (state.mouseDown && state.mouseButton === 0 && !state.selecting && (event.buttons & 1)) {
+    if (state.mouseDown && state.mouseButton === 0 && !state.selecting && !state.wallMode && (event.buttons & 1)) {
       const world = getWorldFromMouse(event);
       if (world) {
         const gx = Math.floor(world.x);
@@ -1355,8 +1348,8 @@ function onMouseUp(event) {
     state.selecting = false;
   }
 
-  // Wall mode: single click (no drag) toggles nearest edge
-  if (state._wallDragStart && state.mode === '2d') {
+  // Wall mode: small click = toggle single edge, drag = perimeter rect
+  if (state._wallDragStart) {
     const world = getWorldFromMouse(event);
     if (world) {
       const dx = world.x - state._wallDragStart.x;
@@ -1367,6 +1360,8 @@ function onMouseUp(event) {
           toggleWall(edge.gx, edge.gz, edge.dir);
           updateStatusBar();
         }
+      } else {
+        wallRect(state._wallDragStart, world);
       }
     }
     state._wallDragStart = null;
@@ -1431,9 +1426,7 @@ function onKeyDown(event) {
   }
 
   if (event.code === 'KeyW') {
-    if (state.mode === '2d') {
-      toggleWallMode();
-    }
+    toggleWallMode();
     return;
   }
 
@@ -1515,8 +1508,14 @@ function toggleWallMode() {
 
 function toggleWireframe() {
   state.wireframe = !state.wireframe;
-  for (const mesh of cellMeshes.values()) {
+  for (const [key, mesh] of cellMeshes) {
     mesh.material.wireframe = state.wireframe;
+    if (state.wireframe) {
+      mesh.material.color.set('#222222');
+    } else {
+      const cell = state.grid.get(key);
+      if (cell) mesh.material.color.set(cell.color);
+    }
   }
   for (const mesh of wallMeshes.values()) {
     mesh.material.wireframe = state.wireframe;
@@ -1540,7 +1539,8 @@ function updateStatusBar() {
     else if (state.fillMode) sbMode.textContent = '2D FILL';
     else sbMode.textContent = '2D PAINT';
   } else {
-    sbMode.textContent = '3D FLY';
+    if (state.wallMode) sbMode.textContent = '3D WALL';
+    else sbMode.textContent = '3D FLY';
   }
   sbCells.textContent = state.grid.size + (state.walls.size ? ` +${state.walls.size}w` : '');
 }
@@ -1574,8 +1574,8 @@ function updateHelp() {
       <span class="key">Arrows</span> <span class="dim">look around</span><br>
       <span class="key">RMB hold</span> <span class="dim">mouse look</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom to cursor</span><br>
-      <span class="key">LMB</span> <span class="dim">paint cell on ground</span><br>
-      <span class="key">Alt+LMB</span> <span class="dim">toggle wall</span><br>
+      <span class="key">W</span> <span class="dim">${state.wallMode ? 'WALL [ON]' : 'WALL [OFF]'}</span><br>
+      <span class="key">LMB</span> <span class="dim">${state.wallMode ? 'toggle wall / drag perimeter' : 'paint cell on ground'}</span><br>
       <span class="key">Shift+LMB</span> <span class="dim">select cells/walls</span><br>
       <span class="key">G</span> <span class="dim">wireframe</span><br>
       <span class="key">Del</span> <span class="dim">delete selected</span><br>
