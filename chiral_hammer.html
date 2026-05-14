@@ -1190,6 +1190,34 @@ function toggleSelectAtMouse3D(event) {
   clearSelection();
 }
 
+function deleteAtMouse3D(event) {
+  _ndc.x = (event.clientX / window.innerWidth) * 2 - 1;
+  _ndc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  _raycaster.setFromCamera(_ndc, state.camera3D);
+
+  const cellHits = _raycaster.intersectObjects(Array.from(cellMeshes.values()));
+  if (cellHits.length > 0) {
+    const key = cellHits[0].object.name.replace('cell-', '');
+    const [gx, gz] = key.split(',').map(Number);
+    removeCell(gx, gz);
+    updateStatusBar();
+    return true;
+  }
+
+  const wallHits = _raycaster.intersectObjects(Array.from(wallMeshes.values()));
+  if (wallHits.length > 0) {
+    const key = wallHits[0].object.name.replace('wall-', '');
+    if (state.walls.has(key)) {
+      const [gx, gz, dir] = key.split(',');
+      removeWall(parseInt(gx), parseInt(gz), dir);
+      updateStatusBar();
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function deleteSelectedCells() {
   for (const key of state.selectedCells) {
     const [gx, gz] = key.split(',').map(Number);
@@ -1430,14 +1458,44 @@ function onMouseDown(event) {
           break;
       }
     } else if (event.button === 2) {
-      if (tool === 'tile' || tool === 'fill') {
-        state.mouseDown = true;
-        state.mouseButton = 2;
-        if (tool === 'fill') state._dragStart = getWorldFromMouse(event);
+      state.mouseDown = true;
+      state.mouseButton = 2;
+      if (tool === 'fill' || tool === 'house') state._dragStart = getWorldFromMouse(event);
+
+      if (tool === 'tile' || tool === 'fill' || tool === 'house') {
         const grid = getGridFromMouse(event);
         if (grid && cellExists(grid.gx, grid.gz)) {
           removeCell(grid.gx, grid.gz);
           updateStatusBar();
+        }
+      } else if (tool === 'wall') {
+        state._dragStart = getWorldFromMouse(event);
+        const edge = getNearestEdge(event);
+        if (edge) {
+          state._dragEdgeDir = edge.dir;
+          state._dragEdgeGX = edge.gx;
+          state._dragEdgeGZ = edge.gz;
+          const key = canonicalWallKey(edge.gx, edge.gz, edge.dir);
+          if (state.walls.has(key)) {
+            removeWall(edge.gx, edge.gz, edge.dir);
+            updateStatusBar();
+          }
+        }
+      } else if (tool === 'select') {
+        state._dragStart = getWorldFromMouse(event);
+        const grid = getGridFromMouse(event);
+        if (grid && cellExists(grid.gx, grid.gz)) {
+          removeCell(grid.gx, grid.gz);
+          updateStatusBar();
+        } else {
+          const edge = getNearestEdge(event);
+          if (edge) {
+            const key = canonicalWallKey(edge.gx, edge.gz, edge.dir);
+            if (state.walls.has(key)) {
+              removeWall(edge.gx, edge.gz, edge.dir);
+              updateStatusBar();
+            }
+          }
         }
       }
     } else if (event.button === 1) {
@@ -1513,6 +1571,10 @@ function onMouseDown(event) {
         }
       }
     } else if (event.button === 2) {
+      state.mouseDown = true;
+      state.mouseButton = 2;
+      deleteAtMouse3D(event);
+    } else if (event.button === 1) {
       state.rightDown = true;
       state.mouse.set(0, 0);
     }
@@ -1570,7 +1632,17 @@ function onMouseMove(event) {
     }
 
     if (state.mouseDown && state.mouseButton === 2 && (event.buttons & 2)) {
-      if (state._dragStart) {
+      if (tool === 'wall' && state._dragStart) {
+        const world = getWorldFromMouse(event);
+        if (world) {
+          const walls = computePenWalls(state._dragEdgeGX, state._dragEdgeGZ, state._dragEdgeDir, world);
+          for (const w of walls) {
+            const key = canonicalWallKey(w.gx, w.gz, w.dir);
+            if (state.walls.has(key)) removeWall(w.gx, w.gz, w.dir);
+          }
+          updateStatusBar();
+        }
+      } else if (state._dragStart) {
         const world = getWorldFromMouse(event);
         if (world) eraseRect(state._dragStart, world);
       } else {
@@ -1621,6 +1693,18 @@ function onMouseMove(event) {
       }
     }
 
+    if (state.mouseDown && state.mouseButton === 2 && !state.selecting && (event.buttons & 2)) {
+      const world = getWorldFromMouse(event);
+      if (world) {
+        const gx = Math.floor(world.x);
+        const gz = Math.floor(world.z);
+        if (cellExists(gx, gz)) {
+          removeCell(gx, gz);
+          updateStatusBar();
+        }
+      }
+    }
+
     if (state.selecting) {
       state.selectScreenEnd.set(event.clientX, event.clientY);
       const x1 = Math.min(state.selectScreenStart.x, state.selectScreenEnd.x);
@@ -1661,17 +1745,19 @@ function onMouseUp(event) {
     state.selecting = false;
   }
 
-  // Wall tool: small click = toggle single edge; drag walls already placed in real-time
+  // Wall tool: small click = place single edge (LMB only); drag walls already placed in real-time
   if (tool === 'wall' && state._dragStart) {
-    const world = getWorldFromMouse(event);
-    if (world) {
-      const dx = world.x - state._dragStart.x;
-      const dz = world.z - state._dragStart.z;
-      if (Math.abs(dx) < 0.3 && Math.abs(dz) < 0.3) {
-        const edge = getNearestEdge(event);
-        if (edge) {
-          setWall(edge.gx, edge.gz, edge.dir, state.wallColor, state.wallHeight);
-          updateStatusBar();
+    if (state.mouseButton === 0) {
+      const world = getWorldFromMouse(event);
+      if (world) {
+        const dx = world.x - state._dragStart.x;
+        const dz = world.z - state._dragStart.z;
+        if (Math.abs(dx) < 0.3 && Math.abs(dz) < 0.3) {
+          const edge = getNearestEdge(event);
+          if (edge) {
+            setWall(edge.gx, edge.gz, edge.dir, state.wallColor, state.wallHeight);
+            updateStatusBar();
+          }
         }
       }
     }
@@ -1902,9 +1988,9 @@ function updateHelp() {
   const toolActions = {
     tile:   { lmb: 'tile cell', rmb: 'erase cell' },
     fill:   { lmb: 'drag fill rect', rmb: 'drag erase rect' },
-    wall:   { lmb: 'click edge / drag pen line', rmb: '—' },
-    select: { lmb: 'drag rubber-band select', rmb: '—' },
-    house:  { lmb: 'drag fill + walls', rmb: '—' },
+    wall:   { lmb: 'click edge / drag pen line', rmb: 'delete wall' },
+    select: { lmb: 'drag rubber-band select', rmb: 'delete cell / wall' },
+    house:  { lmb: 'drag fill + walls', rmb: 'erase cell' },
   };
   const act = toolActions[tool];
 
@@ -1924,9 +2010,10 @@ function updateHelp() {
     helpMode.textContent = shiftActive ? '3D — SELECT (Shift)' : `3D — ${toolLabel}`;
     helpKeys.innerHTML = `
       <span class="key">WASD</span> <span class="dim">move</span> <span class="key">Q/E</span> <span class="dim">up/down</span><br>
-      <span class="key">Arrows</span> <span class="dim">look</span> <span class="key">RMB</span> <span class="dim">mouselook</span><br>
+      <span class="key">Arrows</span> <span class="dim">look</span> <span class="key">MMB</span> <span class="dim">mouselook</span><br>
       <span class="key">Scroll</span> <span class="dim">zoom to cursor</span> <span class="key">Shift</span> <span class="dim">boost</span><br>
       <span class="key">LMB</span> <span class="dim">${act.lmb}</span><br>
+      <span class="key">RMB</span> <span class="dim">${act.rmb}</span><br>
       <span class="key">Shift hold</span> <span class="dim">SELECT</span><br>
       <span class="key">1</span><span class="dim">Tile</span> <span class="key">2</span><span class="dim">Fill</span> <span class="key">3</span><span class="dim">Wall</span> <span class="key">4</span><span class="dim">Select</span> <span class="key">5</span><span class="dim">House</span><br>
       <span class="key">G</span> <span class="dim">wire</span> <span class="key">H</span> <span class="dim">fog</span> <span class="key">Del</span> <span class="dim">delete</span><br>
@@ -2161,6 +2248,7 @@ window.CHIRAL_HAMMER = {
   computePenWalls,
   toggleSelectAtMouse2D,
   toggleSelectAtMouse3D,
+  deleteAtMouse3D,
   saveState,
   loadState,
   exportJSON,
